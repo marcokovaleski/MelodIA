@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+/* MelodIA Design System - Design tokens (Tailwind v4 theme) */
+@theme {
+  /* Primary palette - Emerald/Teal */
+  --color-primary: #05b38d;
+  --color-primary-hover: #049b7a;
+  --color-primary-light: #00B894;
+  /* Secondary / Surface */
+  --color-secondary: #f0f5f4;
+  --color-surface: #f8f9fa;
+  --color-surface-dark: #2a2a2a;
+  /* Text */
+  --color-text-primary: #1E1E1E;
+  --color-text-secondary: #5f8c82;
+  --color-text-subtle: #6c757d;
+  --color-text-muted: #9ca3af;
+  /* Dark theme */
+  --color-deep-black: #1E1E1E;
+  --color-pure-white: #ffffff;
+  /* Accents */
+  --color-accent-purple: #6C5CE7;
+  --color-accent-yellow: #FFE66D;
+  /* Border */
+  --color-border: #e5e7eb;
+  --color-border-dark: #495057;
+  /* Font */
+  --font-display: 'Manrope', 'Noto Sans', system-ui, sans-serif;
+}
+
+/* Base styles */
+@layer base {
+  html {
+    @apply antialiased;
+  }
+  body {
+    font-family: var(--font-display);
+    @apply bg-white text-[var(--color-text-primary)] min-h-screen;
+  }
+}
+
+/* Material Symbols - ensure icons load */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.material-symbols-outlined.filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Animation - music notes (Hero) */
+@keyframes rise {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  50% { transform: translateY(-15px) scale(1.2); opacity: 0.5; }
+  100% { transform: translateY(-30px) scale(1.5); opacity: 0; }
+}
+.animate-rise {
+  animation: rise 2s ease-in-out infinite;
+}
+
+/* Playlist card hover */
+.playlist-card-hover {
+  @apply transition-all duration-200 ease-in-out;
+}
+.playlist-card-hover:hover {
+  @apply -translate-y-1 shadow-lg;
+}
+
+/* Login page - ícone music_note: destaque + animações */
+@keyframes login-icon-fade-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes login-icon-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.92;
+    transform: scale(1.04);
+  }
+}
+.animate-login-icon-in {
+  animation: login-icon-fade-scale 0.6s ease-out forwards;
+}
+.animate-login-pulse {
+  animation: login-icon-pulse 2.5s ease-in-out infinite;
+}
+
+/* Callback / auth loading - spinner mínimo */
+@keyframes auth-spin {
+  to { transform: rotate(360deg); }
+}
+.auth-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: auth-spin 0.8s linear infinite;
+}
