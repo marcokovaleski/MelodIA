@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { exchangeCodeForToken, getProfile } from '../auth/spotifyPKCE';
+import {
+  exchangeCodeForToken,
+  getProfile,
+  validateAndConsumeState,
+} from '../auth/spotifyPKCE';
 import { useAuthStore } from '../store/authStore';
 
 /**
@@ -17,8 +21,13 @@ export default function CallbackPage() {
   useEffect(() => {
     if (hasHandledRef.current) return;
     const code = searchParams.get('code');
+    const stateFromUrl = searchParams.get('state');
     if (!code) {
       setError('Código de autorização não recebido.');
+      return;
+    }
+    if (!validateAndConsumeState(stateFromUrl)) {
+      setError('Estado de segurança inválido. Tente fazer login novamente.');
       return;
     }
 

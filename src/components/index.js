@@ -11,3 +11,6 @@ export { default as MusicCard } from './MusicCard';
 export { default as PlaylistCard } from './PlaylistCard';
 export { default as PromptCard } from './PromptCard';
 export { default as Tabs } from './Tabs';
+export { default as ExploreSection } from './ExploreSection';
+export { default as TrackItemCard } from './TrackItemCard';
+export { default as Spinner } from './Spinner';

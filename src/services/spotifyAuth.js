@@ -3,6 +3,8 @@
  * Não implementado: apenas contratos e stubs para expansão.
  */
 
+import { clearSpotifySession } from '../auth/spotifyPKCE';
+
 const SPOTIFY_AUTH_BASE = 'https://accounts.spotify.com';
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 
@@ -50,6 +52,14 @@ export async function refreshAccessToken(refreshToken) {
  */
 export function hasValidSpotifyToken() {
   return false;
+}
+
+/**
+ * Remove tokens e estados de sessão Spotify do storage (localStorage/sessionStorage).
+ * Para logout completo (store + redirect), use handleLogout de auth/logout.js.
+ */
+export function logoutSpotify() {
+  clearSpotifySession();
 }
 
 export { SPOTIFY_AUTH_BASE, SPOTIFY_API_BASE };

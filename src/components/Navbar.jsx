@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import AppLogo from './AppLogo';
 import { useUI } from '../context/UIContext';
 import { useAuthStore, selectUserAvatar } from '../store/authStore';
+import { handleLogout } from '../auth/logout';
 
 const defaultAvatar =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuCRHfrO5aNmOjG7WdR8r4rbkrj2nYDxMZattlaig3kSGpEQxOZK-j1OVer-YuSGcW40DiuFZeGtDxmt7SNPET3Bd2VER0q6tqq5yYCuXYbcQ97e2KVNi-z0OJNHULf0jFN6qfaO6zo_OXXcwNH6lgwNXN5U_L-M8_LfF7I4rBlhhl-uRCvEUvM29Owz1EAAd-D22NHec6ADchtWIQysDzcQD1VRlXHgZnpiWQnlFr22WEn09AUB2sCcm8oIQcC6VrhjULdgKgi5A5l-';
@@ -65,6 +66,15 @@ export default function Navbar({ userAvatar: userAvatarProp, variant: variantPro
         >
           <span className="material-symbols-outlined">settings</span>
         </Link>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className={`flex h-10 w-10 items-center justify-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 ${configClass}`}
+          aria-label="Sair"
+          title="Sair"
+        >
+          <span className="material-symbols-outlined">logout</span>
+        </button>
         <div
           className="h-9 w-9 rounded-full bg-cover bg-center sm:h-10 sm:w-10"
           style={{ backgroundImage: `url("${userAvatar}")` }}

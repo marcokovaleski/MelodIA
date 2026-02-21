@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useUI } from '../context/UIContext';
 import AppLogo from './AppLogo';
+import { handleLogout } from '../auth/logout';
 
 const navItems = [
   { to: '/', icon: 'home', label: 'Início' },
@@ -58,7 +59,7 @@ export default function Sidebar() {
           </nav>
         </div>
 
-        <div className="mt-auto">
+        <div className="mt-auto flex flex-col gap-2">
           <NavLink
             to="/criar-playlist"
             onClick={toggleSidebar}
@@ -66,6 +67,17 @@ export default function Sidebar() {
           >
             <span className="truncate">Criar Nova Playlist</span>
           </NavLink>
+          <button
+            type="button"
+            onClick={() => {
+              toggleSidebar();
+              handleLogout();
+            }}
+            className="flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)]"
+          >
+            <span className="material-symbols-outlined shrink-0">logout</span>
+            <span>Sair</span>
+          </button>
         </div>
       </aside>
     </>

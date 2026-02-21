@@ -9,6 +9,7 @@ import {
   GeneratePlaylistPage,
   SettingsPage,
   CallbackPage,
+  PlaylistDetailsPage,
 } from './pages';
 
 function App() {
@@ -34,7 +35,7 @@ function App() {
               <Route path="biblioteca/albums" element={<BibliotecaPage />} />
               <Route path="biblioteca/podcasts" element={<BibliotecaPage />} />
               <Route path="configuracoes" element={<SettingsPage />} />
-              <Route path="playlist/:id" element={<GeneratePlaylistPage />} />
+              <Route path="playlist/:id" element={<PlaylistDetailsPage />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
