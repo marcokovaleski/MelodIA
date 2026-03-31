@@ -6,7 +6,6 @@ import {
   LoginPage,
   HomePage,
   BibliotecaPage,
-  GeneratePlaylistPage,
   SettingsPage,
   CallbackPage,
   PlaylistDetailsPage,
@@ -29,7 +28,6 @@ function App() {
               }
             >
               <Route index element={<HomePage />} />
-              <Route path="criar-playlist" element={<GeneratePlaylistPage />} />
               <Route path="biblioteca" element={<BibliotecaPage />} />
               <Route path="biblioteca/artistas" element={<BibliotecaPage />} />
               <Route path="biblioteca/albums" element={<BibliotecaPage />} />

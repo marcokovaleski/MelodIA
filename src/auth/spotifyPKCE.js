@@ -26,6 +26,8 @@ const SPOTIFY_SCOPES = [
   'playlist-read-private',
   'playlist-read-collaborative',
   'user-follow-read',
+  'playlist-modify-private',
+  'playlist-modify-public'
 ];
 
 /**

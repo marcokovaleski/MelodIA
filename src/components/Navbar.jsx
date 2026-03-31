@@ -53,7 +53,8 @@ export default function Navbar({ userAvatar: userAvatarProp, variant: variantPro
 
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         <Link
-          to="/criar-playlist"
+          to="/"
+          state={{ scrollToHero: true, focusHero: true }}
           className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-4 py-2 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[var(--color-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2"
         >
           <span className="material-symbols-outlined text-lg">add</span>

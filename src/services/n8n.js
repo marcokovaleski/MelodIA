@@ -3,7 +3,7 @@
  * Estrutura pronta para expansão com fetch/axios.
  */
 
-const N8N_BASE_URL = import.meta.env.VITE_N8N_BASE_URL || '';
+const N8N_BASE_URL = import.meta.env.VITE_N8N_BASE_URL || 'http://localhost:5678';
 
 /**
  * Chama um workflow N8N (webhook ou API).
@@ -31,13 +31,11 @@ export async function callN8nWorkflow(path, options = {}) {
  * @param {string} prompt - Descrição da playlist
  * @param {object} options - Opções (ex: userId, spotifyToken ref)
  */
-export async function generatePlaylistViaN8n(prompt, options = {}) {
-  // TODO: implementar quando o workflow N8N estiver definido
-  const path = '/webhook/gerar-playlist';
-  const body = { prompt, ...options };
+export async function generatePlaylistViaN8n(prompt, spotifyToken) {
+  const path = '/webhook/melodia';
   const res = await callN8nWorkflow(path, {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ prompt, spotifyToken }),
   });
   return res.json();
 }

@@ -4,6 +4,52 @@ import { useAuthStore } from '../store/authStore';
 import { getUserPlaylistsPaginated } from '../services/spotify/playlists';
 import { Tabs, PlaylistCard } from '../components';
 
+const MOBILE_BREAKPOINT = 768;
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT : false,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
+    const handler = () => setIsMobile(mq.matches);
+    handler();
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return isMobile;
+}
+
+/**
+ * Botão de play para item da lista: no desktop só no hover (.playlist-play-button),
+ * no mobile sempre visível (CSS @media max-width 768px).
+ * Estilo: verde #1db954, ícone branco, 40px desktop / 36px mobile.
+ */
+function PlaylistListPlayButton({ onClick, ariaLabel }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className="playlist-play-button focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-surface-dark)] hover:scale-105"
+    >
+      <span className="material-symbols-outlined text-3xl">play_arrow</span>
+    </button>
+  );
+}
+
+/**
+ * Container do item de playlist no modo lista: hover com destaque e botão play à esquerda.
+ */
+function PlaylistListItemContainer({ children, playButton }) {
+  return (
+    <div className="playlist-row group flex items-center gap-4 rounded-lg p-3">
+      {playButton}
+      {children}
+    </div>
+  );
+}
+
 const TAB_ITEMS = [
   { to: '', label: 'Playlists' },
   { to: 'artistas', label: 'Artistas' },
@@ -38,6 +84,7 @@ function PlaylistCardSkeleton() {
 export default function BibliotecaPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const currentUserId = useAuthStore((s) => s.userProfile?.id) ?? null;
+  const isMobile = useIsMobile();
 
   const [playlists, setPlaylists] = useState([]);
   const [offset, setOffset] = useState(0);
@@ -193,31 +240,44 @@ export default function BibliotecaPage() {
                       key={playlist.id}
                       to={`/playlist/${playlist.id}`}
                       state={playlistState}
-                      className="flex items-center gap-4 rounded-lg p-3 transition-colors hover:bg-[var(--color-surface)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] dark:hover:bg-[var(--color-surface-dark)]"
+                      className="block focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 rounded-lg"
                     >
-                      {imageUrl ? (
-                        <img
-                          src={imageUrl}
-                          alt=""
-                          className="h-14 w-14 shrink-0 rounded-md object-cover"
-                          width={56}
-                          height={56}
-                        />
-                      ) : (
-                        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-primary)] text-white">
-                          <span className="material-symbols-outlined text-2xl">
-                            queue_music
-                          </span>
+                      <PlaylistListItemContainer
+                        playButton={
+                          <PlaylistListPlayButton
+                            ariaLabel={`Reproduzir ${playlist.name ?? 'Playlist'}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              // Futuro: disparar reprodução da playlist
+                            }}
+                          />
+                        }
+                      >
+                        {imageUrl ? (
+                          <img
+                            src={imageUrl}
+                            alt=""
+                            className="h-14 w-14 shrink-0 rounded-md object-cover"
+                            width={56}
+                            height={56}
+                          />
+                        ) : (
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-[var(--color-primary-light)] to-[var(--color-primary)] text-white">
+                            <span className="material-symbols-outlined text-2xl">
+                              queue_music
+                            </span>
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-bold text-[var(--color-text-primary)]">
+                            {playlist.name ?? 'Sem nome'}
+                          </p>
+                          <p className="truncate text-sm text-[var(--color-text-subtle)]">
+                            {subtitle}
+                          </p>
                         </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold text-[var(--color-text-primary)]">
-                          {playlist.name ?? 'Sem nome'}
-                        </p>
-                        <p className="truncate text-sm text-[var(--color-text-subtle)]">
-                          {subtitle}
-                        </p>
-                      </div>
+                      </PlaylistListItemContainer>
                     </Link>
                   );
                 }

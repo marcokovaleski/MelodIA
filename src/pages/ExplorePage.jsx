@@ -27,7 +27,9 @@ export default function ExplorePage() {
   const navigate = useNavigate();
 
   const handlePromptClick = (text) => {
-    navigate('/criar-playlist', { state: { prompt: text } });
+    navigate('/', {
+      state: { heroPrompt: text, scrollToHero: true, focusHero: true },
+    });
   };
 
   return (

@@ -39,10 +39,10 @@ src/
 | `/`                | Home                   | Hero + input para prompt     |
 | `/login`           | Login                  | Login com Spotify            |
 | `/explore`         | Explore                | Prompts, artistas, músicas   |
-| `/criar-playlist`  | Gerar playlist         | Busca + player + lista       |
+| `/` (Hero)         | Gerar playlist         | Prompt + webhook n8n         |
 | `/biblioteca`      | Biblioteca             | Playlists (grid + abas)      |
 | `/configuracoes`   | Configurações          | Placeholder                  |
-| `/playlist/:id`    | Detalhe da playlist    | Reutiliza GeneratePlaylist   |
+| `/playlist/:id`    | Detalhe da playlist    | Spotify API                  |
 
 ## Como rodar
 
