@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Navbar from './Navbar';
 import Footer from './Footer';
+import PlayerDock from './PlayerDock';
 import { useUI } from '../context/UIContext';
 import { useAuthStore, selectUserAvatar } from '../store/authStore';
 
@@ -63,11 +64,13 @@ export default function LayoutWithSidebar() {
 
       <div className="flex flex-1 flex-col min-w-0">
         <Navbar />
-        <main className="flex-1 overflow-auto p-4 pt-24 md:p-6 md:pt-20 lg:p-8">
+        <main className="flex-1 overflow-auto p-4 pb-36 pt-24 md:p-6 md:pb-36 md:pt-20 lg:p-8">
           <Outlet />
         </main>
         <Footer />
       </div>
+
+      <PlayerDock />
     </div>
   );
 }

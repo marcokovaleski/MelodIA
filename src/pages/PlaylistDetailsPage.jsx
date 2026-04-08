@@ -1,10 +1,12 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { getPlaylistItems } from '../services/spotify/playlistItems';
 import { getPlaylist } from '../services/spotify/playlistDetails';
+import { toPlaylistUri } from '../services/spotifyPlayerService';
+import { useSpotifyPlayer } from '../hooks/useSpotifyPlayer';
 import { formatDuration } from '../utils/formatDuration';
-import { TrackItemCard, Spinner } from '../components';
+import { TrackItemCard, Spinner, PlaylistTrackIndexCell } from '../components';
 
 const TRACKS_PER_PAGE = 10;
 
@@ -35,7 +37,7 @@ function normalizeTrackItem(entry) {
   }
 
   return {
-    id: track.id ?? entry.added_at + title,
+    id: track.id ?? `${entry.added_at}-${title}`,
     image,
     title,
     subtitle,
@@ -75,6 +77,8 @@ export default function PlaylistDetailsPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const accessToken = useAuthStore((s) => s.accessToken);
+  const { playPlaylistUri, playFromPlaylistPosition: playFromPositionWithEnsure, busyAction } =
+    useSpotifyPlayer();
 
   const state = location.state || {};
   const [header, setHeader] = useState({
@@ -89,8 +93,17 @@ export default function PlaylistDetailsPage() {
   const [isLoadingHeader, setIsLoadingHeader] = useState(!state.playlistName && !!playlistId);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
   const [error, setError] = useState(null);
+  const isPlaybackBusy = Boolean(busyAction);
   const initialLoadDone = useRef(false);
   const loaderRef = useRef(null);
+
+  const playlistUri = useMemo(() => {
+    try {
+      return toPlaylistUri(playlistId);
+    } catch {
+      return null;
+    }
+  }, [playlistId]);
 
   const loadHeader = useCallback(async () => {
     if (!accessToken || !playlistId) return;
@@ -181,12 +194,31 @@ export default function PlaylistDetailsPage() {
     loadMoreTracks();
   }, [loadHeader, loadMoreTracks]);
 
+  const handlePlayPlaylist = useCallback(() => {
+    if (!playlistUri) return;
+    void playPlaylistUri(playlistUri);
+  }, [playlistUri, playPlaylistUri]);
+
+  const handlePlayFromPosition = useCallback(
+    (positionZeroBased) => {
+      if (!playlistUri) return;
+      void playFromPositionWithEnsure(playlistUri, positionZeroBased);
+    },
+    [playlistUri, playFromPositionWithEnsure],
+  );
+
   if (!playlistId) return null;
 
   const totalLabel =
     header.total === 1 ? '1 música' : `${header.total} músicas`;
 
-  const normalizedTracks = tracks.map(normalizeTrackItem).filter(Boolean);
+  const normalizedTracks = tracks
+    .map((entry, globalIndex) => {
+      const normalized = normalizeTrackItem(entry);
+      if (!normalized) return null;
+      return { ...normalized, globalIndex };
+    })
+    .filter(Boolean);
   const isInitialLoad = tracks.length === 0 && isLoadingTracks;
 
   return (
@@ -233,6 +265,20 @@ export default function PlaylistDetailsPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 md:px-6">
+        {!error && normalizedTracks.length > 0 && (
+          <div className="mb-6 flex items-center gap-4">
+            <button
+              type="button"
+              onClick={handlePlayPlaylist}
+              disabled={isPlaybackBusy || !accessToken}
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] text-white shadow-lg transition-transform hover:scale-105 hover:bg-[var(--color-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Reproduzir playlist"
+            >
+              <span className="material-symbols-outlined text-4xl filled">play_arrow</span>
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center dark:border-[var(--color-border-dark)] dark:bg-[var(--color-surface-dark)]">
             <span className="material-symbols-outlined text-5xl text-[var(--color-text-muted)]">
@@ -270,8 +316,15 @@ export default function PlaylistDetailsPage() {
         {!error && normalizedTracks.length > 0 && (
           <ul className="space-y-1" aria-label="Faixas da playlist">
             {normalizedTracks.map((item) => (
-              <li key={item.id}>
+              <li key={`${item.id}-${item.globalIndex}`}>
                 <TrackItemCard
+                  leading={
+                    <PlaylistTrackIndexCell
+                      indexOneBased={item.globalIndex + 1}
+                      onPlay={() => handlePlayFromPosition(item.globalIndex)}
+                      disabled={isPlaybackBusy || !accessToken}
+                    />
+                  }
                   image={item.image}
                   title={item.title}
                   subtitle={item.subtitle}

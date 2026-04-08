@@ -16,7 +16,7 @@ const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
  * @returns {string} URL para redirecionar o usuário
  */
 export function getSpotifyAuthUrl(clientId, redirectUri, scopes = []) {
-  const scope = scopes.length ? scopes.join(' ') : 'playlist-modify-public playlist-read-private user-read-email user-read-private';
+  const scope = scopes.length ? scopes.join(' ') : 'playlist-modify-public playlist-read-private user-read-email user-read-private user-modify-playback-state';
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: 'code',

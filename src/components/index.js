@@ -13,4 +13,8 @@ export { default as PromptCard } from './PromptCard';
 export { default as Tabs } from './Tabs';
 export { default as ExploreSection } from './ExploreSection';
 export { default as TrackItemCard } from './TrackItemCard';
+export { default as PlaylistTrackIndexCell } from './PlaylistTrackIndexCell';
 export { default as Spinner } from './Spinner';
+export { default as PlayerDock } from './PlayerDock';
+export { default as PlayerControls } from './PlayerControls';
+export { default as PlayerProgressBar } from './PlayerProgressBar';

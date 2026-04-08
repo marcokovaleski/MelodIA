@@ -27,7 +27,11 @@ const SPOTIFY_SCOPES = [
   'playlist-read-collaborative',
   'user-follow-read',
   'playlist-modify-private',
-  'playlist-modify-public'
+  'playlist-modify-public',
+  /** Web Playback SDK + controle de reprodução (RF-008) */
+  'streaming',
+  'user-read-playback-state',
+  'user-modify-playback-state',
 ];
 
 /**
@@ -206,6 +210,39 @@ export async function exchangeCodeForToken(code) {
   };
 }
 
+/**
+ * Renova o access_token com refresh_token (PKCE public client).
+ */
+export async function refreshSpotifyAccessToken(refreshToken) {
+  if (!refreshToken || typeof refreshToken !== 'string') {
+    throw new Error('Refresh token ausente');
+  }
+  const { clientId } = getSpotifyAuthConfig();
+  const params = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: clientId,
+  });
+
+  const response = await fetch(SPOTIFY_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Falha ao renovar sessão: ${text}`);
+  }
+
+  const data = await response.json();
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? refreshToken,
+    expiresIn: data.expires_in ?? 3600,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Perfil do usuário
 // ---------------------------------------------------------------------------
@@ -235,7 +272,7 @@ export function clearSpotifySession() {
   try {
     localStorage.removeItem(VERIFIER_KEY);
     sessionStorage.removeItem(STATE_KEY);
-  } catch (_) {
+  } catch {
     // ignore
   }
 }
