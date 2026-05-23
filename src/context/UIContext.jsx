@@ -21,6 +21,7 @@ export function UIProvider({ children }) {
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useUI() {
   const ctx = useContext(UIContext);
   if (!ctx) throw new Error('useUI must be used within UIProvider');

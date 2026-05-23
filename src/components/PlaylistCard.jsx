@@ -5,7 +5,6 @@ import { Link } from 'react-router-dom';
  * Suporta coverUrl nulo (exibe placeholder estiloso).
  *
  * @param {object} props
- * @param {string} [props.id] - Id da playlist
  * @param {string} props.title - Nome da playlist
  * @param {string} [props.subtitle] - Ex.: "X músicas"
  * @param {string | null} [props.coverUrl] - URL da capa ou null para placeholder
@@ -14,7 +13,6 @@ import { Link } from 'react-router-dom';
  * @param {() => void} [props.onPlay] - Callback ao clicar em reproduzir
  */
 export default function PlaylistCard({
-  id,
   title,
   subtitle,
   coverUrl,

@@ -149,7 +149,7 @@ async function executeOne({ url, options, resolve, reject, retryCount = 0 }) {
         };
         resolve(cloned);
         return;
-      } catch (_) {
+      } catch {
         // fallback: seguir com fetch
       }
     }
@@ -185,7 +185,7 @@ async function executeOne({ url, options, resolve, reject, retryCount = 0 }) {
       const clone = res.clone();
       const body = await clone.json().catch(() => clone.text());
       setCache(key, body, res.status, Object.fromEntries(res.headers.entries()));
-    } catch (_) {
+    } catch {
       // ignore cache write
     }
   }

@@ -33,7 +33,7 @@ export function getSpotifyAuthUrl(clientId, redirectUri, scopes = []) {
  * @param {string} code - Código retornado no redirect
  * @param {string} redirectUri - Mesmo usado em getSpotifyAuthUrl
  */
-export async function exchangeCodeForToken(code, redirectUri) {
+export async function exchangeCodeForToken() {
   // TODO: chamar backend que usa client_secret e retorna { access_token, refresh_token, expires_in }
   return { access_token: null, refresh_token: null, expires_in: 0 };
 }
@@ -42,7 +42,7 @@ export async function exchangeCodeForToken(code, redirectUri) {
  * Refresh do access token usando refresh_token.
  * Stub: implementar no backend.
  */
-export async function refreshAccessToken(refreshToken) {
+export async function refreshAccessToken() {
   return { access_token: null, expires_in: 0 };
 }
 

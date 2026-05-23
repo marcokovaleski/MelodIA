@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { getPlaylistItems } from '../services/spotify/playlistItems';
 import { getPlaylist } from '../services/spotify/playlistDetails';
+import { editPlaylist } from '../services/playlistEditService';
 import { toPlaylistUri } from '../services/spotifyPlayerService';
 import { useSpotifyPlayer } from '../hooks/useSpotifyPlayer';
 import { formatDuration } from '../utils/formatDuration';
@@ -93,8 +94,10 @@ export default function PlaylistDetailsPage() {
   const [isLoadingHeader, setIsLoadingHeader] = useState(!state.playlistName && !!playlistId);
   const [isLoadingTracks, setIsLoadingTracks] = useState(false);
   const [error, setError] = useState(null);
+  const [editPrompt, setEditPrompt] = useState('');
+  const [isUpdatingPlaylist, setIsUpdatingPlaylist] = useState(false);
+  const [editFeedback, setEditFeedback] = useState(null);
   const isPlaybackBusy = Boolean(busyAction);
-  const initialLoadDone = useRef(false);
   const loaderRef = useRef(null);
 
   const playlistUri = useMemo(() => {
@@ -105,9 +108,9 @@ export default function PlaylistDetailsPage() {
     }
   }, [playlistId]);
 
-  const loadHeader = useCallback(async () => {
+  const loadHeader = useCallback(async ({ forceRefresh = false } = {}) => {
     if (!accessToken || !playlistId) return;
-    if (state.playlistName) {
+    if (state.playlistName && !forceRefresh) {
       setHeader({
         playlistName: state.playlistName,
         image: state.image ?? null,
@@ -131,6 +134,32 @@ export default function PlaylistDetailsPage() {
       setIsLoadingHeader(false);
     }
   }, [accessToken, playlistId, state.playlistName, state.image, state.total, state.ownerName]);
+
+  const loadPlaylist = useCallback(
+    async ({ forceRefreshHeader = false, preserveTracks = false } = {}) => {
+      if (!accessToken || !playlistId) return;
+      setError(null);
+      if (!preserveTracks) {
+        setTracks([]);
+        setOffset(0);
+        setHasMore(true);
+      }
+      setIsLoadingTracks(true);
+      try {
+        await loadHeader({ forceRefresh: forceRefreshHeader });
+        const data = await getPlaylistItems(accessToken, playlistId, TRACKS_PER_PAGE, 0);
+        const rawItems = data.items ?? [];
+        setTracks(rawItems);
+        setOffset(TRACKS_PER_PAGE);
+        setHasMore(!!data.next);
+      } catch (err) {
+        setError(err?.message ?? 'Não foi possível carregar as faixas.');
+      } finally {
+        setIsLoadingTracks(false);
+      }
+    },
+    [accessToken, playlistId, loadHeader],
+  );
 
   const loadMoreTracks = useCallback(async () => {
     if (!accessToken || !playlistId || isLoadingTracks || !hasMore) return;
@@ -156,20 +185,13 @@ export default function PlaylistDetailsPage() {
   }, [accessToken, playlistId, offset, isLoadingTracks, hasMore]);
 
   useEffect(() => {
-    if (!playlistId || !accessToken) return;
-    if (!initialLoadDone.current) {
-      initialLoadDone.current = true;
-      loadMoreTracks();
-    }
-  }, [playlistId, accessToken]); // eslint-disable-line react-hooks/exhaustive-deps -- initial load once
-
-  useEffect(() => {
     if (!playlistId) {
       navigate('/', { replace: true });
       return;
     }
-    loadHeader();
-  }, [playlistId, loadHeader, navigate]);
+    if (!accessToken) return;
+    loadPlaylist();
+  }, [playlistId, accessToken, loadPlaylist, navigate]);
 
   useEffect(() => {
     const el = loaderRef.current;
@@ -186,13 +208,34 @@ export default function PlaylistDetailsPage() {
 
   const retry = useCallback(() => {
     setError(null);
-    setTracks([]);
-    setOffset(0);
-    setHasMore(true);
-    initialLoadDone.current = false;
-    loadHeader();
-    loadMoreTracks();
-  }, [loadHeader, loadMoreTracks]);
+    loadPlaylist();
+  }, [loadPlaylist]);
+
+  const handleEditPlaylist = useCallback(async () => {
+    const trimmedPrompt = editPrompt.trim();
+    if (!trimmedPrompt || !playlistId || !accessToken || isUpdatingPlaylist) return;
+
+    setEditFeedback(null);
+    setIsUpdatingPlaylist(true);
+
+    try {
+      await editPlaylist(trimmedPrompt, playlistId, accessToken);
+      setEditPrompt('');
+      setEditFeedback({
+        type: 'success',
+        message: 'Playlist atualizada com sucesso!',
+      });
+      await loadPlaylist({ forceRefreshHeader: true, preserveTracks: true });
+    } catch (err) {
+      console.error(err);
+      setEditFeedback({
+        type: 'error',
+        message: 'Erro ao atualizar playlist. Tente novamente.',
+      });
+    } finally {
+      setIsUpdatingPlaylist(false);
+    }
+  }, [editPrompt, playlistId, accessToken, isUpdatingPlaylist, loadPlaylist]);
 
   const handlePlayPlaylist = useCallback(() => {
     if (!playlistUri) return;
@@ -276,6 +319,39 @@ export default function PlaylistDetailsPage() {
             >
               <span className="material-symbols-outlined text-4xl filled">play_arrow</span>
             </button>
+          </div>
+        )}
+
+        {!error && (
+          <div className="mb-6 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 dark:border-[var(--color-border-dark)] dark:bg-[var(--color-surface-dark)]">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center">
+              <input
+                type="text"
+                value={editPrompt}
+                onChange={(e) => setEditPrompt(e.target.value)}
+                placeholder="Refinar playlist com base em um prompt..."
+                className="h-12 w-full rounded-lg border border-[var(--color-border)] bg-transparent px-4 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] dark:border-[var(--color-border-dark)]"
+              />
+              <button
+                type="button"
+                onClick={handleEditPlaylist}
+                disabled={!editPrompt.trim() || isUpdatingPlaylist}
+                className="inline-flex h-12 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] px-6 font-bold text-white transition-colors hover:bg-[var(--color-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+              >
+                {isUpdatingPlaylist ? 'Atualizando...' : 'Atualizar Playlist'}
+              </button>
+            </div>
+            {editFeedback?.message && (
+              <p
+                className={`mt-3 text-sm ${
+                  editFeedback.type === 'error'
+                    ? 'text-red-500'
+                    : 'text-[var(--color-text-secondary)]'
+                }`}
+              >
+                {editFeedback.message}
+              </p>
+            )}
           </div>
         )}
 

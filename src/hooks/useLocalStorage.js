@@ -19,13 +19,16 @@ export function useLocalStorage(key, initialValue) {
   const setValue = useCallback(
     (value) => {
       try {
-        setStored((prev) => (typeof value === 'function' ? value(prev) : value));
-        window.localStorage.setItem(key, JSON.stringify(typeof value === 'function' ? value(stored) : value));
+        setStored((prev) => {
+          const nextValue = typeof value === 'function' ? value(prev) : value;
+          window.localStorage.setItem(key, JSON.stringify(nextValue));
+          return nextValue;
+        });
       } catch (e) {
         console.warn('useLocalStorage setItem error', e);
       }
     },
-    [key, stored]
+    [key]
   );
 
   return [stored, setValue];

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { rateLimitedFetch } from '../services/spotify/spotifyRateLimiter';
 import PromptCard from './PromptCard';
@@ -24,12 +24,13 @@ function getBestImageUrl(images) {
 
 export default function ExploreSection({ onPromptClick }) {
   const accessToken = useAuthStore((s) => s.accessToken);
+  const isDev = import.meta.env.DEV;
   const [topArtists, setTopArtists] = useState([]);
   const [topTracks, setTopTracks] = useState([]);
   const [loadingArtists, setLoadingArtists] = useState(false);
   const [loadingTracks, setLoadingTracks] = useState(false);
 
-  async function fetchTopArtists() {
+  const fetchTopArtists = useCallback(async () => {
     const token = accessToken || useAuthStore.getState().accessToken;
     if (!token) return;
     setLoadingArtists(true);
@@ -41,13 +42,13 @@ export default function ExploreSection({ onPromptClick }) {
       const data = await res.json();
       setTopArtists((data.items || []).slice(0, 5));
     } catch (err) {
-      console.error('fetchTopArtists', err);
+      if (isDev) console.error('fetchTopArtists', err);
     } finally {
       setLoadingArtists(false);
     }
-  }
+  }, [accessToken, isDev]);
 
-  async function fetchTopTracks() {
+  const fetchTopTracks = useCallback(async () => {
     const token = accessToken || useAuthStore.getState().accessToken;
     if (!token) return;
     setLoadingTracks(true);
@@ -59,16 +60,17 @@ export default function ExploreSection({ onPromptClick }) {
       const data = await res.json();
       setTopTracks((data.items || []).slice(0, 5));
     } catch (err) {
-      console.error('fetchTopTracks', err);
+      if (isDev) console.error('fetchTopTracks', err);
     } finally {
       setLoadingTracks(false);
     }
-  }
+  }, [accessToken, isDev]);
 
   useEffect(() => {
+    if (!accessToken) return;
     fetchTopArtists();
     fetchTopTracks();
-  }, []);
+  }, [accessToken, fetchTopArtists, fetchTopTracks]);
 
   return (
     <div className="w-full">

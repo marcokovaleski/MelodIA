@@ -1,24 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { getUserPlaylistsPaginated } from '../services/spotify/playlists';
-import { Tabs, PlaylistCard } from '../components';
-
-const MOBILE_BREAKPOINT = 768;
-
-function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < MOBILE_BREAKPOINT : false,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-    const handler = () => setIsMobile(mq.matches);
-    handler();
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isMobile;
-}
+import { Tabs, PlaylistCard, Spinner } from '../components';
 
 /**
  * Botão de play para item da lista: no desktop só no hover (.playlist-play-button),
@@ -84,55 +68,82 @@ function PlaylistCardSkeleton() {
 export default function BibliotecaPage() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const currentUserId = useAuthStore((s) => s.userProfile?.id) ?? null;
-  const isMobile = useIsMobile();
 
   const [playlists, setPlaylists] = useState([]);
   const [offset, setOffset] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [hasNext, setHasNext] = useState(false);
-  const [hasPrevious, setHasPrevious] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingPlaylists, setIsLoadingPlaylists] = useState(false);
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
+  const loaderRef = useRef(null);
 
-  const loadPlaylists = useCallback(
-    async (currentOffset = 0) => {
-      if (!accessToken) return;
-      setIsLoading(true);
+  const loadInitialPlaylists = useCallback(async () => {
+    if (!accessToken) {
+      setPlaylists([]);
+      setOffset(0);
+      setHasMore(false);
+      setIsLoadingPlaylists(false);
       setError(null);
-      try {
-        const data = await getUserPlaylistsPaginated(
-          accessToken,
-          currentUserId,
-          currentOffset,
-        );
-        setPlaylists(data.playlistsFiltradas ?? []);
-        setOffset(data.offset);
-        setTotal(data.total);
-        setHasNext(data.hasNext);
-        setHasPrevious(data.hasPrevious);
-      } catch (err) {
-        setError(err?.message ?? 'Não foi possível carregar as playlists.');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [accessToken, currentUserId],
-  );
+      return;
+    }
+
+    setPlaylists([]);
+    setOffset(0);
+    setHasMore(true);
+    setIsLoadingPlaylists(true);
+    setError(null);
+    try {
+      const data = await getUserPlaylistsPaginated(accessToken, currentUserId, 0);
+      setPlaylists(data.playlistsFiltradas ?? []);
+      setOffset(PLAYLISTS_PER_PAGE);
+      setHasMore(data.hasNext);
+    } catch (err) {
+      setError(err?.message ?? 'Não foi possível carregar as playlists.');
+    } finally {
+      setIsLoadingPlaylists(false);
+    }
+  }, [accessToken, currentUserId]);
+
+  const loadMorePlaylists = useCallback(async () => {
+    if (!accessToken || isLoadingPlaylists || !hasMore) return;
+
+    setIsLoadingPlaylists(true);
+    setError(null);
+    try {
+      const currentOffset = offset;
+      const data = await getUserPlaylistsPaginated(
+        accessToken,
+        currentUserId,
+        currentOffset,
+      );
+      setPlaylists((prev) => [...prev, ...(data.playlistsFiltradas ?? [])]);
+      setOffset((prev) => prev + PLAYLISTS_PER_PAGE);
+      setHasMore(data.hasNext);
+    } catch (err) {
+      setError(err?.message ?? 'Não foi possível carregar as playlists.');
+    } finally {
+      setIsLoadingPlaylists(false);
+    }
+  }, [accessToken, currentUserId, offset, isLoadingPlaylists, hasMore]);
 
   useEffect(() => {
-    loadPlaylists(0);
-  }, [loadPlaylists]);
+    loadInitialPlaylists();
+  }, [loadInitialPlaylists]);
 
-  const nextPage = useCallback(() => {
-    if (!hasNext) return;
-    loadPlaylists(offset + PLAYLISTS_PER_PAGE);
-  }, [hasNext, offset, loadPlaylists]);
+  useEffect(() => {
+    const el = loaderRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMorePlaylists();
+      },
+      { threshold: 1 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMorePlaylists]);
 
-  const prevPage = useCallback(() => {
-    if (!hasPrevious) return;
-    loadPlaylists(Math.max(0, offset - PLAYLISTS_PER_PAGE));
-  }, [hasPrevious, offset, loadPlaylists]);
+  const isInitialLoad = playlists.length === 0 && isLoadingPlaylists;
 
   return (
     <div className="flex flex-col gap-6">
@@ -169,8 +180,8 @@ export default function BibliotecaPage() {
 
       <Tabs items={TAB_ITEMS} basePath="/biblioteca" />
 
-      {/* Loading: skeleton dos cards */}
-      {isLoading && (
+      {/* Loading inicial: skeleton dos cards */}
+      {isInitialLoad && (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6">
           {Array.from({ length: 8 }).map((_, i) => (
             <PlaylistCardSkeleton key={i} />
@@ -179,7 +190,7 @@ export default function BibliotecaPage() {
       )}
 
       {/* Erro: mensagem + botão tentar novamente */}
-      {!isLoading && error && (
+      {!isInitialLoad && error && (
         <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 text-center dark:border-[var(--color-border-dark)] dark:bg-[var(--color-surface-dark)]">
           <span className="material-symbols-outlined text-5xl text-[var(--color-text-muted)]">
             error_outline
@@ -187,7 +198,7 @@ export default function BibliotecaPage() {
           <p className="text-[var(--color-text-primary)]">{error}</p>
           <button
             type="button"
-            onClick={() => loadPlaylists(0)}
+            onClick={() => void loadInitialPlaylists()}
             className="inline-flex items-center gap-2 rounded-full bg-[var(--color-primary)] px-6 py-3 font-bold text-white transition-colors hover:bg-[var(--color-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2"
           >
             <span className="material-symbols-outlined">refresh</span>
@@ -197,28 +208,15 @@ export default function BibliotecaPage() {
       )}
 
       {/* Lista de playlists (imagem maior = images[0], nome, total de músicas) */}
-      {!isLoading && !error && (
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {playlists.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-12 text-center dark:border-[var(--color-border-dark)] dark:bg-[var(--color-surface-dark)]">
-              <span className="material-symbols-outlined text-6xl text-[var(--color-text-muted)]">
-                queue_music
-              </span>
-              <p className="text-[var(--color-text-primary)]">
-                Nenhuma playlist encontrada.
-              </p>
-              <p className="text-sm text-[var(--color-text-subtle)]">
-                Crie playlists no Spotify ou no MelodIA para vê-las aqui.
-              </p>
-            </div>
-          ) : (
-            <div
-              className={
-                viewMode === 'list'
-                  ? 'flex flex-col gap-3'
-                  : 'grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6'
-              }
-            >
+      {!error && playlists.length > 0 && (
+        <div className="min-h-0 flex-1">
+          <div
+            className={
+              viewMode === 'list'
+                ? 'flex flex-col gap-3'
+                : 'grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-6'
+            }
+          >
               {playlists.map((playlist) => {
                 const imageUrl = getPlaylistImageUrl(playlist.images);
                 const totalTracks = playlist?.items?.total ?? 0;
@@ -294,43 +292,37 @@ export default function BibliotecaPage() {
                   />
                 );
               })}
-            </div>
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* Paginação real: 5 por página, Anterior / Próxima */}
-          {!isLoading && !error && (total > 0 || hasNext || hasPrevious) && (
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-4 border-t border-[var(--color-border)] pt-6 dark:border-[var(--color-border-dark)]">
-              <span className="text-sm font-medium text-[var(--color-text-secondary)]">
-                Página {Math.floor(offset / PLAYLISTS_PER_PAGE) + 1} de {Math.max(1, Math.ceil(total / PLAYLISTS_PER_PAGE))}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={prevPage}
-                  disabled={!hasPrevious}
-                  aria-label="Página anterior"
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-secondary)] disabled:pointer-events-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] dark:bg-[var(--color-surface-dark)] dark:hover:bg-[var(--color-surface)]"
-                >
-                  <span className="material-symbols-outlined text-lg">
-                    chevron_left
-                  </span>
-                  Página anterior
-                </button>
-                <button
-                  type="button"
-                  onClick={nextPage}
-                  disabled={!hasNext}
-                  aria-label="Próxima página"
-                  className="inline-flex items-center gap-1 rounded-full bg-[var(--color-surface)] px-4 py-2 text-sm font-medium text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-secondary)] disabled:pointer-events-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] dark:bg-[var(--color-surface-dark)] dark:hover:bg-[var(--color-surface)]"
-                >
-                  Próxima página
-                  <span className="material-symbols-outlined text-lg">
-                    chevron_right
-                  </span>
-                </button>
-              </div>
-            </div>
+      {!error && !isInitialLoad && playlists.length === 0 && (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-12 text-center dark:border-[var(--color-border-dark)] dark:bg-[var(--color-surface-dark)]">
+          <span className="material-symbols-outlined text-6xl text-[var(--color-text-muted)]">
+            queue_music
+          </span>
+          <p className="text-[var(--color-text-primary)]">
+            Nenhuma playlist encontrada.
+          </p>
+          <p className="text-sm text-[var(--color-text-subtle)]">
+            Crie playlists no Spotify ou no MelodIA para vê-las aqui.
+          </p>
+        </div>
+      )}
+
+      {/* Infinite scroll: sentinel + indicador (mesmo padrão que PlaylistDetailsPage) */}
+      {!error && (playlists.length > 0 || isInitialLoad) && hasMore && (
+        <div
+          ref={loaderRef}
+          className="flex flex-col items-center justify-center gap-2 py-6"
+          aria-hidden
+        >
+          {isLoadingPlaylists && playlists.length > 0 && (
+            <p className="text-sm text-[var(--color-text-subtle)]">
+              Carregando mais playlists...
+            </p>
           )}
+          {isLoadingPlaylists && <Spinner />}
         </div>
       )}
     </div>

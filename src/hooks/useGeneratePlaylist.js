@@ -2,6 +2,8 @@ import { useState, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { generatePlaylistViaN8n } from '../services/n8n';
 
+const isDev = import.meta.env.DEV;
+
 /**
  * Orquestra a geração de playlist (chama o serviço n8n existente).
  * Não altera endpoint, payload nem parsing da resposta — apenas validação local e UX.
@@ -30,20 +32,22 @@ export function useGeneratePlaylist() {
         return null;
       }
 
-      const tokenPreview = `${spotifyToken.slice(0, 8)}...`;
-
       setIsLoading(true);
 
-      console.log('Chamando n8n', {
-        prompt: trimmedPrompt,
-        spotifyTokenPreview: tokenPreview,
-      });
+      if (isDev) {
+        console.debug('Chamando n8n', { prompt: trimmedPrompt });
+      }
 
       try {
         const res = await generatePlaylistViaN8n(trimmedPrompt, spotifyToken);
-        console.log('Resposta recebida', res);
+        if (isDev) {
+          console.debug('Resposta recebida', res);
+        }
 
         if (!res?.success || !res?.playlistId) {
+          if (isDev) {
+            console.error('Resposta do webhook sem playlistId', res?.raw ?? res);
+          }
           throw new Error('Resposta inválida do webhook ao gerar playlist.');
         }
 
@@ -51,11 +55,12 @@ export function useGeneratePlaylist() {
         return res;
       } catch (err) {
         setErrorMessage('Erro ao gerar playlist. Tente novamente.');
-        console.error('Erro detalhado ao gerar playlist', {
-          message: err?.message,
-          stack: err?.stack,
-          error: err,
-        });
+        if (isDev) {
+          console.error('Erro detalhado ao gerar playlist', {
+            message: err?.message,
+            error: err,
+          });
+        }
         return null;
       } finally {
         setIsLoading(false);
