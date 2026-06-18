@@ -1,0 +1,416 @@
+{
+  "name": "webhook edit",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "melodia-edit",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "b75dc0b2-43c9-4ff2-874d-3e1ed5081bf0",
+      "name": "Entrada",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        -32,
+        192
+      ],
+      "typeVersion": 2.1,
+      "webhookId": "a99318f6-68d6-4d31-abc4-4edb67a614e4"
+    },
+    {
+      "parameters": {
+        "functionCode": "const token = $json.body.spotifyToken.replace('Bearer ', '');\n\nreturn [{\n  prompt: $json.body.prompt,\n  spotifyToken: token,\n  playlistId: $json.body.playlistId,\n  uris: [],\n  attempts: 0\n}];"
+      },
+      "id": "5594988b-f451-4ea3-a465-d33fce9f0134",
+      "name": "Extrair Dados",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        176,
+        192
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "https://api.spotify.com/v1/me/top/artists?limit=10",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\":\"Bearer {{$('Extrair Dados').first().json.spotifyToken}}\"}",
+        "options": {}
+      },
+      "id": "95d80f0c-8eb4-4410-9e57-061333bf1efb",
+      "name": "Top Artistas",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        576,
+        192
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "functionCode": "const entrada = $('Extrair Dados').first().json;\nconst topArtists = $json.items ? $json.items.map(a => a.name) : [];\n\nconst existingNames = [];\n\n// Extrai os nomes das músicas que já estão na playlist para a IA ler\nconst existNodes = $items(\"Buscar Existentes\");\nfor (const item of existNodes) {\n    let tracks = item.json.items || item.json || [];\n    if(!Array.isArray(tracks)) tracks = [tracks];\n    \n    for(const t of tracks) {\n        const trackData = t.track || t.item || t;\n        if(trackData?.name) {\n            const artist = trackData.artists?.[0]?.name || \"\";\n            existingNames.push(`${trackData.name} - ${artist}`);\n        }\n    }\n}\n\nreturn [{\n  prompt: entrada.prompt,\n  spotifyToken: entrada.spotifyToken,\n  playlistId: entrada.playlistId,\n  topArtists: topArtists,\n  existingNames: existingNames,\n  attempts: 0,\n  allUris: []\n}];"
+      },
+      "id": "9a2247dd-e0eb-44c6-9590-754b3d6d928a",
+      "name": "Consolidar Preferências",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        784,
+        192
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Você é um curador musical de precisão cirúrgica.\\n\\nREGRA DE ISOLAMENTO: Avalie o pedido do usuário. Se ele pedir um ARTISTA ou BANDA ESPECÍFICA (ex: 'Slipknot', 'Deftones'), IGNORE a lista de 'Top artistas' e foque 100% no artista pedido.\\n\\nREGRA DE DUPLICIDADE (CRÍTICA): O usuário JÁ POSSUI as músicas abaixo na playlist. VOCÊ ESTÁ ESTRITAMENTE PROIBIDO DE SUGERIR QUALQUER UMA DELAS:\\n{{ $('Consolidar Preferências').first().json.existingNames.slice(-150).join(', ') }}\\n\\nREGRA DE ATERRAMENTO: NUNCA invente músicas. Retorne APENAS músicas reais.\\n\\nPedido: {{ $('Extrair Dados').first().json.prompt }}\\nTop artistas: {{ $('Consolidar Preferências').first().json.topArtists.join(', ') }}\\n\\nRetorne ESTRITAMENTE o formato JSON com 10 sugestões NOVAS:\\n{\\\"tracks\\\":[{\\\"artist\\\":\\\"nome\\\",\\\"track\\\":\\\"nome\\\",\\\"album\\\":\\\"nome\\\"}]}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\",\n    \"temperature\": 0.2\n  }\n}",
+        "options": {}
+      },
+      "id": "ec60b23e-ef89-4c04-88ac-5264e286b091",
+      "name": "IA",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        976,
+        192
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "SjWfBJo1gl4O02LS",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "let raw = $json.candidates[0].content.parts[0].text;\nconst parsed = JSON.parse(raw);\n\nreturn parsed.tracks.map(t => ({\n  artist: t.artist,\n  track: t.track,\n  album: t.album,\n\n  // 🔥 mantém estado do loop\n  attempts: $json.attempts,\n  uris: $json.uris || [],\n  allUris: $json.allUris || [],\n\n  spotifyToken: $json.spotifyToken,\n  playlistId: $json.playlistId\n}));"
+      },
+      "id": "839908d5-b49d-4914-b94e-6c7431ce3675",
+      "name": "Explodir",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        1184,
+        192
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.spotify.com/v1/search?q=${encodeURIComponent($json.track + ' ' + $json.artist)}&type=track&limit=5` }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\":\"Bearer {{$('Extrair Dados').first().json.spotifyToken}}\"}",
+        "options": {}
+      },
+      "id": "babd49ab-8118-42d9-9164-53edcc35af86",
+      "name": "Buscar Spotify",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        1376,
+        192
+      ],
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "functionCode": "const validTracks = [];\n\nfunction normalize(str) {\n  return (str || \"\")\n    .toLowerCase()\n    .normalize(\"NFD\")\n    .replace(/[\\u0300-\\u036f]/g, \"\")\n    .replace(/[^a-z0-9 ]/g, \"\")\n    .trim();\n}\n\nfor (const i of $items()) {\n  const results = i.json.tracks?.items || [];\n  \n  const expectedName = normalize(i.json.track);\n  const expectedArtist = normalize(i.json.artist);\n\n  for (const item of results) {\n    const spotifyName = normalize(item.name);\n    const spotifyArtist = normalize(item.artists?.[0]?.name);\n\n    if (\n      spotifyArtist !== expectedArtist &&\n      !spotifyArtist.startsWith(expectedArtist) &&\n      !expectedArtist.startsWith(spotifyArtist)\n    ) {\n      continue;\n    }\n\n    const nameMatch =\n      spotifyName.includes(expectedName) ||\n      expectedName.includes(spotifyName);\n\n    if (!nameMatch) continue;\n\n    // 🔥 Agora exportamos a URI e uma \"chave\" de texto com Nome e Artista\n    validTracks.push({\n      uri: item.uri,\n      key: `${spotifyName}-${spotifyArtist}`\n    });\n    break; \n  }\n}\n\nreturn [{\n  validTracks,\n  uris: validTracks.map(t => t.uri), // Mantém por compatibilidade do n8n\n  spotifyToken: $items()[0].json.spotifyToken,\n  playlistId: $items()[0].json.playlistId\n}];"
+      },
+      "id": "3df25fce-b4b3-4af7-b79b-b32005435203",
+      "name": "Validar",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        1568,
+        192
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.spotify.com/v1/playlists/${$('Extrair Dados').first().json.playlistId}/items?limit=50` }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\":\"Bearer {{$('Extrair Dados').first().json.spotifyToken}}\"}",
+        "options": {}
+      },
+      "id": "0d572dcc-bce9-4cee-bf78-11e573831b28",
+      "name": "Buscar Existentes",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        384,
+        192
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "functionCode": "function normalize(str) {\n  return (str || \"\")\n    .toLowerCase()\n    .normalize(\"NFD\")\n    .replace(/[\\u0300-\\u036f]/g, \"\")\n    .replace(/[^a-z0-9 ]/g, \"\")\n    .trim();\n}\n\nconst existingUris = new Set();\nconst existingKeys = new Set();\n\n// 1. Mapear as músicas existentes buscando do nó lá do início\nlet allExistingItems = [];\nconst existNodes = $items(\"Buscar Existentes\");\nfor (const item of existNodes) {\n    if (item.json.items) {\n        allExistingItems.push(...item.json.items);\n    } else if (Array.isArray(item.json)) {\n        allExistingItems.push(...item.json);\n    } else {\n        allExistingItems.push(item.json);\n    }\n}\n\nfor (const i of allExistingItems) {\n  let trackData = i;\n  if (i.item && typeof i.item === 'object') {\n      trackData = i.item;\n  } else if (i.track && typeof i.track === 'object') {\n      trackData = i.track;\n  }\n  \n  if (!trackData || !trackData.uri || !trackData.name) continue;\n  \n  existingUris.add(trackData.uri);\n  const tName = normalize(trackData.name);\n  let aName = \"\";\n  if (trackData.artists && trackData.artists[0]) {\n      aName = normalize(trackData.artists[0].name);\n  }\n  existingKeys.add(`${tName}-${aName}`);\n}\n\n// 2. Resgatar o estado do loop\nlet prev = [];\nlet attempts = 0;\ntry {\n  const loopNode = $('Code in JavaScript').last();\n  if (loopNode && loopNode.json) {\n    prev = loopNode.json.allUris || [];\n    attempts = loopNode.json.attempts || 0;\n  }\n} catch (e) {}\n\n// 3. Pegar as novas músicas do nó Validar\nlet newOnes = [];\ntry {\n  const validarNode = $('Validar').last();\n  if (validarNode && validarNode.json) {\n    newOnes = validarNode.json.validTracks || [];\n  }\n} catch (e) {}\n\n// 4. O Filtro de Dupla Checagem (Proteção Máxima)\nconst filteredNewObjects = newOnes.filter(track => {\n    const isUriDuplicate = existingUris.has(track.uri);\n    const isNameDuplicate = existingKeys.has(track.key);\n    return !isUriDuplicate && !isNameDuplicate;\n});\n\nconst filteredNewUris = filteredNewObjects.map(t => t.uri);\nconst merged = [...new Set([...prev, ...filteredNewUris])];\n\nreturn [{\n  allUris: merged,\n  uris: merged,\n  spotifyToken: $('Extrair Dados').first().json.spotifyToken,\n  playlistId: $('Extrair Dados').first().json.playlistId,\n  attempts: attempts\n}];"
+      },
+      "id": "b9426e03-3eef-4847-a284-3b058c7a6cb9",
+      "name": "Merge URIs",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        1760,
+        192
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ `https://api.spotify.com/v1/playlists/${$('Extrair Dados').first().json.playlistId}/items` }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\":\"Bearer {{$('Extrair Dados').first().json.spotifyToken}}\",\"Content-Type\":\"application/json\"}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ uris: $json.allUris.slice(0,10) }) }}",
+        "options": {}
+      },
+      "id": "dfd5c263-6732-49cd-9a58-6c980f5ed84b",
+      "name": "Adicionar",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        2368,
+        304
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "8a137449-b510-41ef-a91a-0defe7d6ffb3",
+      "name": "Resposta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        2576,
+        304
+      ],
+      "typeVersion": 1.5
+    },
+    {
+      "parameters": {
+        "jsCode": "const target = 5;\nconst maxAttempts = 2;\n\nconst merged = $json.allUris || [];\n\nconst attempts = ($json.attempts ?? 0) + 1;\n\nconst done = merged.length >= target || attempts >= maxAttempts;\n\nreturn [{\n  allUris: merged,\n  total: merged.length,\n  attempts,\n  done,\n  spotifyToken: $json.spotifyToken,\n  playlistId: $json.playlistId\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1952,
+        192
+      ],
+      "id": "72f5fcef-ec5e-4c50-a708-252d7f6294a2",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "704173af-b950-4784-85cc-22cfa79c14f4",
+              "leftValue": "={{ $json.done }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2128,
+        192
+      ],
+      "id": "80c142cb-0c6a-4d0f-a772-bbd8fa34b4b9",
+      "name": "If"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Entrada": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados": {
+      "main": [
+        [
+          {
+            "node": "Buscar Existentes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Top Artistas": {
+      "main": [
+        [
+          {
+            "node": "Consolidar Preferências",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidar Preferências": {
+      "main": [
+        [
+          {
+            "node": "IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA": {
+      "main": [
+        [
+          {
+            "node": "Explodir",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explodir": {
+      "main": [
+        [
+          {
+            "node": "Buscar Spotify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Spotify": {
+      "main": [
+        [
+          {
+            "node": "Validar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar": {
+      "main": [
+        [
+          {
+            "node": "Merge URIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Existentes": {
+      "main": [
+        [
+          {
+            "node": "Top Artistas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge URIs": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adicionar": {
+      "main": [
+        [
+          {
+            "node": "Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Adicionar",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "6412d302-ee2e-47ac-b831-40fa54496ad8",
+  "meta": {
+    "instanceId": "b5d63e09ec5a0df4f33165e619ded55200b250848270f9f35014a629268f515d"
+  },
+  "id": "hLVmNCsl0r3HTG3v",
+  "tags": []
+}

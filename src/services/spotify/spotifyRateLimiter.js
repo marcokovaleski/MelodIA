@@ -129,13 +129,25 @@ function isBatchRequest(url) {
   return typeof url === 'string' && (url.includes('ids=') || url.includes('ids%3D'));
 }
 
+/**
+ * Remove entradas de cache relacionadas a uma playlist (após criar/editar via n8n).
+ * @param {string} playlistId
+ */
+export function invalidateSpotifyCacheForPlaylist(playlistId) {
+  if (!playlistId || typeof playlistId !== 'string') return;
+  const needle = `/playlists/${encodeURIComponent(playlistId)}`;
+  for (const key of cache.keys()) {
+    if (key.includes(needle)) cache.delete(key);
+  }
+}
+
 /** Executa uma única requisição (com retry em 429) */
-async function executeOne({ url, options, resolve, reject, retryCount = 0 }) {
+async function executeOne({ url, options, bypassCache, resolve, reject, retryCount = 0 }) {
   await waitForWindowSlot();
 
   const key = cacheKey(url, options);
   const method = (options?.method || 'GET').toUpperCase();
-  if (method === 'GET' && key) {
+  if (method === 'GET' && key && !bypassCache) {
     const cached = getCached(key);
     if (cached) {
       try {
@@ -180,7 +192,7 @@ async function executeOne({ url, options, resolve, reject, retryCount = 0 }) {
     return;
   }
 
-  if (method === 'GET' && res.ok && key) {
+  if (method === 'GET' && res.ok && key && !bypassCache) {
     try {
       const clone = res.clone();
       const body = await clone.json().catch(() => clone.text());
@@ -225,11 +237,14 @@ async function processQueue() {
  */
 export function rateLimitedFetch(url, options = {}) {
   if (!isSpotifyApiUrl(url)) {
-    return fetch(url, options);
+    const { bypassCache: _bypass, ...fetchOptions } = options;
+    return fetch(url, fetchOptions);
   }
 
+  const { bypassCache = false, ...fetchOptions } = options;
+
   return new Promise((resolve, reject) => {
-    const item = { url, options, resolve, reject, retryCount: 0 };
+    const item = { url, options: fetchOptions, bypassCache, resolve, reject, retryCount: 0 };
     if (isBatchRequest(url)) {
       queue.unshift(item);
     } else {

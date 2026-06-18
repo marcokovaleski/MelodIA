@@ -76,6 +76,9 @@ export default function BibliotecaPage() {
   const [error, setError] = useState(null);
   const [viewMode, setViewMode] = useState('grid');
   const loaderRef = useRef(null);
+  /** Evita segunda página disparada 2x pelo IntersectionObserver antes de isLoadingPlaylists atualizar */
+  const isLoadingMoreRef = useRef(false);
+  const playlistsOffsetRef = useRef(0);
 
   const loadInitialPlaylists = useCallback(async () => {
     if (!accessToken) {
@@ -89,12 +92,15 @@ export default function BibliotecaPage() {
 
     setPlaylists([]);
     setOffset(0);
+    playlistsOffsetRef.current = 0;
+    isLoadingMoreRef.current = false;
     setHasMore(true);
     setIsLoadingPlaylists(true);
     setError(null);
     try {
       const data = await getUserPlaylistsPaginated(accessToken, currentUserId, 0);
       setPlaylists(data.playlistsFiltradas ?? []);
+      playlistsOffsetRef.current = PLAYLISTS_PER_PAGE;
       setOffset(PLAYLISTS_PER_PAGE);
       setHasMore(data.hasNext);
     } catch (err) {
@@ -105,26 +111,42 @@ export default function BibliotecaPage() {
   }, [accessToken, currentUserId]);
 
   const loadMorePlaylists = useCallback(async () => {
-    if (!accessToken || isLoadingPlaylists || !hasMore) return;
+    if (
+      !accessToken ||
+      isLoadingPlaylists ||
+      !hasMore ||
+      isLoadingMoreRef.current
+    ) {
+      return;
+    }
 
+    isLoadingMoreRef.current = true;
     setIsLoadingPlaylists(true);
     setError(null);
     try {
-      const currentOffset = offset;
+      const currentOffset = playlistsOffsetRef.current;
       const data = await getUserPlaylistsPaginated(
         accessToken,
         currentUserId,
         currentOffset,
       );
-      setPlaylists((prev) => [...prev, ...(data.playlistsFiltradas ?? [])]);
-      setOffset((prev) => prev + PLAYLISTS_PER_PAGE);
+      playlistsOffsetRef.current = currentOffset + PLAYLISTS_PER_PAGE;
+      setPlaylists((prev) => {
+        const seen = new Set(prev.map((p) => p.id).filter(Boolean));
+        const uniqueNew = (data.playlistsFiltradas ?? []).filter((p) =>
+          p.id ? !seen.has(p.id) : true,
+        );
+        return [...prev, ...uniqueNew];
+      });
+      setOffset(playlistsOffsetRef.current);
       setHasMore(data.hasNext);
     } catch (err) {
       setError(err?.message ?? 'Não foi possível carregar as playlists.');
     } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingPlaylists(false);
     }
-  }, [accessToken, currentUserId, offset, isLoadingPlaylists, hasMore]);
+  }, [accessToken, currentUserId, isLoadingPlaylists, hasMore]);
 
   useEffect(() => {
     loadInitialPlaylists();
@@ -132,16 +154,17 @@ export default function BibliotecaPage() {
 
   useEffect(() => {
     const el = loaderRef.current;
-    if (!el) return;
+    if (!el || isLoadingPlaylists || !hasMore || playlists.length === 0) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) loadMorePlaylists();
       },
-      { threshold: 1 },
+      { root: null, rootMargin: '120px', threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [loadMorePlaylists]);
+  }, [loadMorePlaylists, isLoadingPlaylists, hasMore, playlists.length]);
 
   const isInitialLoad = playlists.length === 0 && isLoadingPlaylists;
 

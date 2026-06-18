@@ -71,8 +71,8 @@ export default function PlayerProgressBar({
         }`}
       >
         <div
-          className={`h-full rounded-full bg-[var(--color-primary)] transition-[width] duration-200 ease-out ${
-            isPlaying ? '' : 'opacity-80'
+          className={`h-full rounded-full bg-[var(--color-primary)] ${
+            isPlaying ? '' : 'opacity-80 transition-[width] duration-200 ease-out'
           }`}
           style={{ width: `${pct}%` }}
         />

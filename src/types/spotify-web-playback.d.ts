@@ -66,12 +66,44 @@ interface SpotifyPlayerConstructor {
   }) => SpotifyPlayerInstance;
 }
 
+/** Estado emitido pelo Web Playback SDK (`player_state_changed`). */
+export interface SpotifyWebPlaybackPlayerState {
+  paused: boolean;
+  position: number;
+  duration: number;
+  timestamp: number;
+  shuffle: boolean;
+  repeat_mode: 0 | 1 | 2;
+  track_window: {
+    current_track: {
+      id: string;
+      name: string;
+      duration_ms: number;
+      uri: string;
+      type: string;
+      artists?: { name: string }[];
+      album?: { name: string; images?: { url: string }[] };
+    } | null;
+  };
+}
+
+/** Atualização de progresso do SDK (âncora local; não usar timestamp da REST API). */
+export interface WebPlaybackProgressUpdate {
+  progressMs: number;
+  durationMs: number;
+  isPlaying: boolean;
+}
+
 export interface SpotifyPlayerInstance {
   connect(): Promise<boolean>;
   disconnect(): void;
   addListener(
     event: 'ready' | 'not_ready',
     cb: (d: { device_id: string }) => void,
+  ): void;
+  addListener(
+    event: 'player_state_changed',
+    cb: (state: SpotifyWebPlaybackPlayerState | null) => void,
   ): void;
   addListener(
     event: 'initialization_error' | 'authentication_error' | 'account_error',

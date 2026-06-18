@@ -18,7 +18,7 @@ const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
  * @param {number} [offset=0] - Offset para paginação
  * @returns {Promise<{ items: Array<{ added_at: string|null; is_local: boolean; track: object|null }>; total: number; limit: number; offset: number; next: string|null }>}
  */
-export async function getPlaylistItems(token, playlistId, limit = 50, offset = 0) {
+export async function getPlaylistItems(token, playlistId, limit = 50, offset = 0, { bypassCache = false } = {}) {
   if (!token || typeof token !== 'string') {
     throw new Error('Token de autenticação é obrigatório');
   }
@@ -37,6 +37,7 @@ export async function getPlaylistItems(token, playlistId, limit = 50, offset = 0
     headers: {
       Authorization: `Bearer ${token}`,
     },
+    bypassCache,
   });
 
   if (!response.ok) {

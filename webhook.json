@@ -1,0 +1,446 @@
+{
+  "name": "webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "melodia",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a907b67f-c02b-4ae4-8641-7c3cded3fb17",
+      "name": "Entrada do Frontend",
+      "type": "n8n-nodes-base.webhook",
+      "position": [
+        1744,
+        -928
+      ],
+      "typeVersion": 2.1,
+      "webhookId": "b58c5190-c625-47eb-8d9e-0beb8e0f75a6"
+    },
+    {
+      "parameters": {
+        "functionCode": "if (!$json.body.prompt) {\n  throw new Error('Prompt não informado');\n}\n\nreturn [{\n  prompt: $json.body.prompt,\n  spotifyToken: $json.body.spotifyToken\n}];"
+      },
+      "id": "ad7f7818-c669-4df5-95a5-562af8f4ac23",
+      "name": "Extrair Dados",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        1952,
+        -928
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "functionCode": "const raw = $json.candidates[0].content.parts[0].text;\nconst parsed = JSON.parse(raw);\nreturn [{ ...parsed, spotifyToken: $json.spotifyToken }];"
+      },
+      "id": "0f155183-ef73-45e0-8df3-0228028a9edd",
+      "name": "Processar Intenção",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        2352,
+        -928
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Você é um criador de playlists. Crie um título criativo, curto (máximo 4 palavras) e chamativo para uma playlist com as seguintes características:\\n\\nGênero: {{$json.genero}}\\nHumor: {{$json.humor}}\\nArtistas: {{$json.artistas_exemplo.join(', ')}}\\n\\nRetorne ESTRITAMENTE no formato JSON:\\n{\\\"title\\\": \\\"Nome da Playlist\\\"}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\",\n    \"temperature\": 0.7\n  }\n}",
+        "options": {}
+      },
+      "id": "f1b9afe6-3066-4350-9be1-2951111b7662",
+      "name": "IA Título",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        2544,
+        -928
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "SjWfBJo1gl4O02LS",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const raw = $json.candidates[0].content.parts[0].text;\nconst parsed = JSON.parse(raw);\n\nreturn [{\n  title: parsed.title,\n  genero: $node[\"Processar Intenção\"].json.genero,\n  humor: $node[\"Processar Intenção\"].json.humor,\n  artistas_exemplo: $node[\"Processar Intenção\"].json.artistas_exemplo,\n  spotifyToken: $json.spotifyToken\n}];"
+      },
+      "id": "f195895d-9a1c-4a7e-aa97-bb8f399ade7e",
+      "name": "Extrair Título",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        2752,
+        -928
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Você é um curador musical de elite. O usuário quer uma playlist com as seguintes características:\\n\\nGênero: {{$json.genero}}\\nHumor: {{$json.humor}}\\nArtistas Base: {{$json.artistas_exemplo.join(', ')}}\\n\\nREGRAS DE OURO:\\n1. Sugira EXATAMENTE 20 músicas que se encaixem perfeitamente nessa vibe.\\n2. NUNCA invente músicas. Retorne apenas faixas 100% reais que existem no Spotify.\\n3. Para provar a veracidade, inclua o nome do ÁLBUM de onde a música saiu.\\n\\nRetorne ESTRITAMENTE no formato JSON:\\n{\\\"tracks\\\":[{\\\"artist\\\":\\\"nome\\\",\\\"track\\\":\\\"nome\\\",\\\"album\\\":\\\"nome\\\"}]}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\",\n    \"temperature\": 0.3\n  }\n}",
+        "options": {}
+      },
+      "id": "15ebb95e-317c-40c6-b9b2-ef60392ec4d5",
+      "name": "IA Músicas",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        2944,
+        -928
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "SjWfBJo1gl4O02LS",
+          "name": "Google Gemini API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const raw = $json.candidates[0].content.parts[0].text;\nconst parsed = JSON.parse(raw);\n\nconst tracks = parsed.tracks || [];\n\nconst result = tracks\n  .map(t => ({\n    artist: t.artist,\n    track: t.track,\n    album: t.album,\n    spotifyToken: $node[\"Extrair Dados\"].json.spotifyToken\n  }))\n  .filter(t => t.artist && t.track);\n\nif (result.length === 0) {\n  throw new Error(\"Nenhuma música válida retornada pela IA\");\n}\n\nreturn result;"
+      },
+      "id": "582d3d96-705a-4b70-8064-219a6617f0d5",
+      "name": "Explodir Tracks",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        3152,
+        -928
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "={{ `https://api.spotify.com/v1/search?q=${encodeURIComponent($json.track)}%20artist:${encodeURIComponent($json.artist)}&type=track&limit=1` }}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{$json.spotifyToken}}\"\n}",
+        "options": {}
+      },
+      "id": "ad679a3d-99d6-42af-9e6f-8c7e5c4d3bfd",
+      "name": "Buscar Spotify",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        3344,
+        -928
+      ],
+      "typeVersion": 4.4,
+      "retryOnFail": true,
+      "waitBetweenTries": 3000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "functionCode": "const validTracks = [];\n\n// Faz um loop por todos os itens (músicas) que chegaram\nfor (const item of $input.all()) {\n  const data = item.json;\n\n  // Verifica se o Spotify realmente encontrou a música (se o array tem itens)\n  if (data.tracks?.items?.length > 0) {\n    validTracks.push({\n      json: {\n        uri: data.tracks.items[0].uri,\n        spotifyToken: data.spotifyToken // Mantém o token para o próximo nó\n      }\n    });\n  }\n}\n\n// Retorna apenas as músicas válidas\nreturn validTracks;"
+      },
+      "id": "83a1cb07-b31e-4e5b-963f-21b5e6809a56",
+      "name": "Extrair URI",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        3552,
+        -928
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "functionCode": "const uris = $items().map(i => i.json.uri).filter(Boolean);\nreturn [{ uris, spotifyToken: $json.spotifyToken }];"
+      },
+      "id": "9c94169b-b524-41d5-acb2-9c123f3d3b6e",
+      "name": "Consolidar URIs",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        3744,
+        -928
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.spotify.com/v1/me/playlists",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\n  \"Authorization\": \"Bearer {{$('Extrair Dados').first().json.spotifyToken}}\",\n  \"Content-Type\": \"application/json\"\n}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"{{$('Extrair Título').first().json.title}}\",\n  \"description\": \"Playlist criada utilizando o MelodIA.\",\n  \"public\": false\n}",
+        "options": {}
+      },
+      "id": "2ac5c329-e175-42ef-b98c-632a220338ca",
+      "name": "Criar Playlist",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        3952,
+        -928
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "functionCode": "return [{ playlistId: $json.id, spotifyToken: $json.spotifyToken }];"
+      },
+      "id": "b24f1c18-0632-4a7a-a2d8-97879d913ee4",
+      "name": "Extrair Playlist ID",
+      "type": "n8n-nodes-base.function",
+      "position": [
+        4144,
+        -928
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{`https://api.spotify.com/v1/playlists/${$json.playlistId}/items`}}",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "={\"Authorization\": \"Bearer {{ $node[\"Extrair Dados\"].json.spotifyToken }}\",\"Content-Type\":\"application/json\"}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ uris: $node['Consolidar URIs'].json.uris }) }}",
+        "options": {}
+      },
+      "id": "4036a5b5-84dd-4651-9ca4-67dfc81e0e9a",
+      "name": "Adicionar Músicas",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        4352,
+        -928
+      ],
+      "typeVersion": 4.4
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"success\": true,\n  \"playlistId\": \"{{ $('Extrair Playlist ID').first().json.playlistId }}\",\n  \"totalTracks\": {{ $('Consolidar URIs').first().json.uris.length }},\n  \"playlistUrl\": \"https://open.spotify.com/playlist/{{ $('Extrair Playlist ID').first().json.playlistId }}\"\n}",
+        "options": {}
+      },
+      "id": "0347ee34-869a-4f1f-8c50-e0d949a44987",
+      "name": "Resposta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "position": [
+        4544,
+        -928
+      ],
+      "typeVersion": 1.5
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpQueryAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "json",
+        "jsonHeaders": "{ \"Content-Type\": \"application/json\" }",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [\n    {\n      \"parts\": [\n        {\n          \"text\": \"Analise o pedido musical do usuário e extraia o Gênero predominante, o Humor/Vibe e até 3 Artistas de Exemplo.\\n\\nPedido: {{$json.prompt}}\\n\\nRetorne ESTRITAMENTE no formato JSON:\\n{\\\"genero\\\": \\\"nome do genero\\\", \\\"humor\\\": \\\"descrição do humor\\\", \\\"artistas_exemplo\\\": [\\\"artista1\\\", \\\"artista2\\\"]}\"\n        }\n      ]\n    }\n  ],\n  \"generationConfig\": {\n    \"responseMimeType\": \"application/json\",\n    \"temperature\": 0.1\n  }\n}",
+        "options": {}
+      },
+      "id": "21b9b8ea-3224-4d00-acef-a627e2349187",
+      "name": "IA Interpretar",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        2144,
+        -928
+      ],
+      "typeVersion": 4.4,
+      "credentials": {
+        "httpQueryAuth": {
+          "id": "SjWfBJo1gl4O02LS",
+          "name": "Google Gemini API"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Entrada do Frontend": {
+      "main": [
+        [
+          {
+            "node": "Extrair Dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Dados": {
+      "main": [
+        [
+          {
+            "node": "IA Interpretar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Processar Intenção": {
+      "main": [
+        [
+          {
+            "node": "IA Título",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA Título": {
+      "main": [
+        [
+          {
+            "node": "Extrair Título",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Título": {
+      "main": [
+        [
+          {
+            "node": "IA Músicas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA Músicas": {
+      "main": [
+        [
+          {
+            "node": "Explodir Tracks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Explodir Tracks": {
+      "main": [
+        [
+          {
+            "node": "Buscar Spotify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar Spotify": {
+      "main": [
+        [
+          {
+            "node": "Extrair URI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair URI": {
+      "main": [
+        [
+          {
+            "node": "Consolidar URIs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consolidar URIs": {
+      "main": [
+        [
+          {
+            "node": "Criar Playlist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Criar Playlist": {
+      "main": [
+        [
+          {
+            "node": "Extrair Playlist ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extrair Playlist ID": {
+      "main": [
+        [
+          {
+            "node": "Adicionar Músicas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Adicionar Músicas": {
+      "main": [
+        [
+          {
+            "node": "Resposta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IA Interpretar": {
+      "main": [
+        [
+          {
+            "node": "Processar Intenção",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "e9982a86-4f53-47cc-b07a-3de1c820aaba",
+  "meta": {
+    "instanceId": "b5d63e09ec5a0df4f33165e619ded55200b250848270f9f35014a629268f515d"
+  },
+  "id": "7XaFifkYKbBZmYdR",
+  "tags": []
+}

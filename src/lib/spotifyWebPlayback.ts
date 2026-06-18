@@ -1,5 +1,8 @@
 import { logSpotifyPlayer, logSpotifyPlayerError } from '../services/spotifyPlayerLogger';
-import type { SpotifyPlayerInstance } from '../types/spotify-web-playback';
+import type {
+  SpotifyPlayerInstance,
+  WebPlaybackProgressUpdate,
+} from '../types/spotify-web-playback';
 
 const SDK_URL = 'https://sdk.scdn.co/spotify-player.js';
 
@@ -44,6 +47,7 @@ function ensureSpotifySdkLoaded(): Promise<void> {
 export async function createBrowserSpotifyPlayer(
   getAccessToken: () => string | Promise<string>,
   playerName = 'MelodIA Web Player',
+  onProgressUpdate?: (update: WebPlaybackProgressUpdate) => void,
 ): Promise<{ deviceId: string; disconnect: () => void; player: SpotifyPlayerInstance }> {
   await ensureSpotifySdkLoaded();
 
@@ -89,6 +93,15 @@ export async function createBrowserSpotifyPlayer(
 
     player.addListener('account_error', ({ message }) => {
       logSpotifyPlayerError('web_player_account', new Error(message), {});
+    });
+
+    player.addListener('player_state_changed', (state) => {
+      if (!state || !onProgressUpdate) return;
+      onProgressUpdate({
+        progressMs: state.position,
+        durationMs: state.duration,
+        isPlaying: !state.paused,
+      });
     });
 
     player.connect().then((ok) => {

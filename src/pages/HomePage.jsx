@@ -76,7 +76,10 @@ export default function HomePage() {
     if (res?.success && res?.playlistId) {
       await new Promise((r) => setTimeout(r, HERO_SUCCESS_MS));
       navigate(`/playlist/${res.playlistId}`, {
-        state: { total: res.tracks ?? 0 },
+        state: {
+          fromCreate: true,
+          ...(res.tracks != null ? { total: res.tracks } : {}),
+        },
       });
     }
   };

@@ -15,7 +15,7 @@ const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
  * @param {string} playlistId - ID da playlist
  * @returns {Promise<{ id: string; name: string; image: string | null; total: number; ownerName: string }>}
  */
-export async function getPlaylist(token, playlistId) {
+export async function getPlaylist(token, playlistId, { bypassCache = false } = {}) {
   if (!token || typeof token !== 'string') {
     throw new Error('Token de autenticação é obrigatório');
   }
@@ -27,6 +27,7 @@ export async function getPlaylist(token, playlistId) {
   const response = await rateLimitedFetch(url, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
+    bypassCache,
   });
 
   if (!response.ok) {

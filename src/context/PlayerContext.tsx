@@ -27,6 +27,10 @@ import {
   SpotifyApiError,
 } from '../services/spotifyPlayerService';
 import { logPlaybackSyncDebug, logSpotifyPlayerError } from '../services/spotifyPlayerLogger';
+import {
+  interpolateFromAnchor,
+  positionFromApiSnapshot,
+} from '../utils/playbackPosition';
 import type { SpotifyPlaybackTrack, SpotifyPlayerPlaybackState } from '../types/spotify-web-playback';
 
 export type PlayerBusyAction =
@@ -70,7 +74,10 @@ export interface PlayerContextValue {
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
 
-const SYNC_INTERVAL_MS = 500;
+/** Tick local entre polls da API (não usa timestamp congelado do Spotify). */
+const PROGRESS_TICK_MS = 250;
+/** Resync de metadados / progress_ms via REST (progress_ms já vem atualizado). */
+const POLL_PLAYBACK_MS = 1500;
 const HIDE_DOCK_DEBOUNCE_MS = 420;
 const POST_PLAY_REFRESH_MS = 420;
 
@@ -116,6 +123,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const durationRef = useRef(0);
   const lastDebugLogRef = useRef(0);
 
+  /** Âncora no relógio local: progress_ms da API/SDK no instante do snapshot. */
+  const applyProgressAnchor = useCallback(
+    (progressMs: number, playing: boolean, durationOverride?: number) => {
+      const receivedAt = Date.now();
+      const dur = durationOverride ?? durationRef.current;
+      if (durationOverride != null) {
+        durationRef.current = durationOverride;
+        setDurationMs(durationOverride);
+      }
+      const snapped = positionFromApiSnapshot(progressMs, dur);
+      baseProgressRef.current = snapped;
+      baseTimestampRef.current = receivedAt;
+      setDisplayProgressMs(snapped);
+      isPlayingRef.current = playing;
+      setIsPlaying(playing);
+    },
+    [],
+  );
+  const applyProgressAnchorRef = useRef(applyProgressAnchor);
+  applyProgressAnchorRef.current = applyProgressAnchor;
+
   const showUserError = useCallback((message: string) => {
     setError(message);
     setToast(message);
@@ -160,24 +188,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
 
     setRawPlayback(state);
-    setIsPlaying(Boolean(state.is_playing));
     setCurrentTrack(state.item);
     const dur = state.item?.duration_ms ?? 0;
-    setDurationMs(dur);
-    durationRef.current = dur;
     setShuffleState(Boolean(state.shuffle_state));
     setRepeatStateState(String(state.repeat_state || 'off'));
 
-    const pr = state.progress_ms ?? 0;
-    const ts = state.timestamp ?? Date.now();
-    baseProgressRef.current = pr;
-    baseTimestampRef.current = ts;
-
-    const calculated =
-      pr + (state.is_playing ? Date.now() - ts : 0);
-    const capped = dur > 0 ? Math.min(calculated, dur) : calculated;
-    setDisplayProgressMs(capped);
-  }, []);
+    applyProgressAnchor(state.progress_ms ?? 0, Boolean(state.is_playing), dur);
+  }, [applyProgressAnchor]);
 
   const refreshPlaybackSoon = useCallback(
     async (delayMs: number) => {
@@ -234,6 +251,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const { deviceId: id, disconnect } = await createBrowserSpotifyPlayer(
           () => tokenRef.current ?? accessToken,
           'MelodIA Web Player',
+          (update) => {
+            applyProgressAnchorRef.current(
+              update.progressMs,
+              update.isPlaying,
+              update.durationMs,
+            );
+          },
         );
         if (cancelled) {
           disconnect();
@@ -285,7 +309,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     };
 
     tick();
-    const id = window.setInterval(tick, 1000);
+    const id = window.setInterval(tick, POLL_PLAYBACK_MS);
     return () => {
       alive = false;
       window.clearInterval(id);
@@ -303,7 +327,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => window.clearTimeout(t);
   }, [rawPlayback]);
 
-  /** Progresso em tempo real: progress_ms + (now - timestamp) */
+  /**
+   * Entre polls: interpola só com relógio local desde o último snapshot (API ou SDK).
+   * Não usar state.timestamp da REST API — fica congelado no início da faixa e causa ~2x.
+   */
   useEffect(() => {
     if (!isPlaying) {
       setDisplayProgressMs(baseProgressRef.current);
@@ -311,26 +338,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
 
     const id = window.setInterval(() => {
-      const pr = baseProgressRef.current;
-      const ts = baseTimestampRef.current;
       const dur = durationRef.current;
-      const calculated = pr + (Date.now() - ts);
-      const capped = dur > 0 ? Math.min(calculated, dur) : calculated;
-      setDisplayProgressMs(capped);
+      const calculated = interpolateFromAnchor(
+        baseProgressRef.current,
+        baseTimestampRef.current,
+        dur,
+      );
+      setDisplayProgressMs(calculated);
 
       const now = Date.now();
-      if (now - lastDebugLogRef.current > 1500) {
+      if (import.meta.env.DEV && now - lastDebugLogRef.current > 2000) {
         lastDebugLogRef.current = now;
-        const drift = calculated - pr;
         logPlaybackSyncDebug({
-          progress_ms: pr,
-          timestamp: ts,
+          progress_ms: baseProgressRef.current,
+          timestamp: baseTimestampRef.current,
           calculatedProgress: calculated,
-          drift,
+          drift: calculated - baseProgressRef.current,
           is_playing: true,
         });
       }
-    }, SYNC_INTERVAL_MS);
+    }, PROGRESS_TICK_MS);
 
     return () => window.clearInterval(id);
   }, [isPlaying]);

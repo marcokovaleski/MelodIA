@@ -3,6 +3,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { getPlaylistItems } from '../services/spotify/playlistItems';
 import { getPlaylist } from '../services/spotify/playlistDetails';
+import { invalidateSpotifyCacheForPlaylist } from '../services/spotify/spotifyRateLimiter';
 import { editPlaylist } from '../services/playlistEditService';
 import { toPlaylistUri } from '../services/spotifyPlayerService';
 import { useSpotifyPlayer } from '../hooks/useSpotifyPlayer';
@@ -99,6 +100,9 @@ export default function PlaylistDetailsPage() {
   const [editFeedback, setEditFeedback] = useState(null);
   const isPlaybackBusy = Boolean(busyAction);
   const loaderRef = useRef(null);
+  /** Evita segunda página disparada 2x pelo IntersectionObserver antes de isLoadingTracks atualizar */
+  const isLoadingMoreRef = useRef(false);
+  const tracksOffsetRef = useRef(0);
 
   const playlistUri = useMemo(() => {
     try {
@@ -108,50 +112,66 @@ export default function PlaylistDetailsPage() {
     }
   }, [playlistId]);
 
-  const loadHeader = useCallback(async ({ forceRefresh = false } = {}) => {
-    if (!accessToken || !playlistId) return;
-    if (state.playlistName && !forceRefresh) {
-      setHeader({
-        playlistName: state.playlistName,
-        image: state.image ?? null,
-        total: state.total ?? 0,
-        ownerName: state.ownerName ?? '',
-      });
-      return;
-    }
-    setIsLoadingHeader(true);
-    try {
-      const data = await getPlaylist(accessToken, playlistId);
-      setHeader({
-        playlistName: data.name,
-        image: data.image,
-        total: data.total,
-        ownerName: data.ownerName,
-      });
-    } catch (err) {
-      setError(err?.message ?? 'Não foi possível carregar a playlist.');
-    } finally {
-      setIsLoadingHeader(false);
-    }
-  }, [accessToken, playlistId, state.playlistName, state.image, state.total, state.ownerName]);
+  const loadHeader = useCallback(
+    async ({ forceRefresh = false, bypassCache = false, itemsTotal } = {}) => {
+      if (!accessToken || !playlistId) return;
+      if (state.playlistName && !forceRefresh) {
+        setHeader({
+          playlistName: state.playlistName,
+          image: state.image ?? null,
+          total: state.total ?? 0,
+          ownerName: state.ownerName ?? '',
+        });
+        return;
+      }
+      setIsLoadingHeader(true);
+      try {
+        const data = await getPlaylist(accessToken, playlistId, { bypassCache });
+        const resolvedTotal = Math.max(data.total ?? 0, itemsTotal ?? 0);
+        setHeader({
+          playlistName: data.name,
+          image: data.image,
+          total: resolvedTotal,
+          ownerName: data.ownerName,
+        });
+      } catch (err) {
+        setError(err?.message ?? 'Não foi possível carregar a playlist.');
+      } finally {
+        setIsLoadingHeader(false);
+      }
+    },
+    [accessToken, playlistId, state.playlistName, state.image, state.total, state.ownerName],
+  );
 
   const loadPlaylist = useCallback(
-    async ({ forceRefreshHeader = false, preserveTracks = false } = {}) => {
+    async ({ forceRefreshHeader = false, bypassCache = false } = {}) => {
       if (!accessToken || !playlistId) return;
       setError(null);
-      if (!preserveTracks) {
-        setTracks([]);
-        setOffset(0);
-        setHasMore(true);
-      }
+      setTracks([]);
+      setOffset(0);
+      tracksOffsetRef.current = 0;
+      isLoadingMoreRef.current = false;
+      setHasMore(true);
       setIsLoadingTracks(true);
       try {
-        await loadHeader({ forceRefresh: forceRefreshHeader });
-        const data = await getPlaylistItems(accessToken, playlistId, TRACKS_PER_PAGE, 0);
+        const data = await getPlaylistItems(accessToken, playlistId, TRACKS_PER_PAGE, 0, {
+          bypassCache,
+        });
         const rawItems = data.items ?? [];
+        const itemsTotal = data.total ?? rawItems.length;
+        tracksOffsetRef.current = rawItems.length;
         setTracks(rawItems);
-        setOffset(TRACKS_PER_PAGE);
-        setHasMore(!!data.next);
+        setOffset(rawItems.length);
+        setHasMore(rawItems.length < itemsTotal);
+        await loadHeader({
+          forceRefresh: forceRefreshHeader,
+          bypassCache,
+          itemsTotal,
+        });
+        setHeader((prev) => ({
+          ...prev,
+          total: Math.max(prev.total ?? 0, itemsTotal),
+        }));
       } catch (err) {
         setError(err?.message ?? 'Não foi possível carregar as faixas.');
       } finally {
@@ -162,27 +182,49 @@ export default function PlaylistDetailsPage() {
   );
 
   const loadMoreTracks = useCallback(async () => {
-    if (!accessToken || !playlistId || isLoadingTracks || !hasMore) return;
+    if (
+      !accessToken ||
+      !playlistId ||
+      isLoadingTracks ||
+      !hasMore ||
+      isLoadingMoreRef.current
+    ) {
+      return;
+    }
+    isLoadingMoreRef.current = true;
     setIsLoadingTracks(true);
     setError(null);
     try {
-      const currentOffset = offset;
+      const currentOffset = tracksOffsetRef.current;
       const data = await getPlaylistItems(
         accessToken,
         playlistId,
         TRACKS_PER_PAGE,
         currentOffset,
+        { bypassCache: false },
       );
       const rawItems = data.items ?? [];
-      setTracks((prev) => [...prev, ...rawItems]);
-      setOffset((prev) => prev + TRACKS_PER_PAGE);
-      setHasMore(!!data.next);
+      const itemsTotal = data.total ?? currentOffset + rawItems.length;
+      tracksOffsetRef.current = currentOffset + rawItems.length;
+      setTracks((prev) => {
+        const seen = new Set(
+          prev.map((entry) => (entry?.item ?? entry?.track)?.id).filter(Boolean),
+        );
+        const uniqueNew = rawItems.filter((entry) => {
+          const id = (entry?.item ?? entry?.track)?.id;
+          return id ? !seen.has(id) : true;
+        });
+        return [...prev, ...uniqueNew];
+      });
+      setOffset(tracksOffsetRef.current);
+      setHasMore(tracksOffsetRef.current < itemsTotal);
     } catch (err) {
       setError(err?.message ?? 'Não foi possível carregar as faixas.');
     } finally {
+      isLoadingMoreRef.current = false;
       setIsLoadingTracks(false);
     }
-  }, [accessToken, playlistId, offset, isLoadingTracks, hasMore]);
+  }, [accessToken, playlistId, isLoadingTracks, hasMore]);
 
   useEffect(() => {
     if (!playlistId) {
@@ -190,21 +232,28 @@ export default function PlaylistDetailsPage() {
       return;
     }
     if (!accessToken) return;
-    loadPlaylist();
-  }, [playlistId, accessToken, loadPlaylist, navigate]);
+
+    const fromCreate = Boolean(location.state?.fromCreate);
+    if (fromCreate) {
+      invalidateSpotifyCacheForPlaylist(playlistId);
+    }
+
+    void loadPlaylist({ forceRefreshHeader: fromCreate, bypassCache: fromCreate });
+  }, [playlistId, accessToken, loadPlaylist, navigate, location.state?.fromCreate]);
 
   useEffect(() => {
     const el = loaderRef.current;
-    if (!el) return;
+    if (!el || isLoadingTracks || !hasMore || tracks.length === 0) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) loadMoreTracks();
       },
-      { threshold: 1 },
+      { root: null, rootMargin: '120px', threshold: 0 },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [loadMoreTracks]);
+  }, [loadMoreTracks, isLoadingTracks, hasMore, tracks.length]);
 
   const retry = useCallback(() => {
     setError(null);
@@ -225,7 +274,8 @@ export default function PlaylistDetailsPage() {
         type: 'success',
         message: 'Playlist atualizada com sucesso!',
       });
-      await loadPlaylist({ forceRefreshHeader: true, preserveTracks: true });
+      invalidateSpotifyCacheForPlaylist(playlistId);
+      await loadPlaylist({ forceRefreshHeader: true, bypassCache: true });
     } catch (err) {
       console.error(err);
       setEditFeedback({
@@ -413,7 +463,7 @@ export default function PlaylistDetailsPage() {
         )}
 
         {/* Load more: Intersection Observer dispara loadMoreTracks */}
-        {!error && (normalizedTracks.length > 0 || isInitialLoad) && hasMore && (
+        {!error && normalizedTracks.length > 0 && hasMore && !isInitialLoad && (
           <div
             ref={loaderRef}
             className="flex justify-center py-6"
