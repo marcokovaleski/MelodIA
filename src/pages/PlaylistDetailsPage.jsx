@@ -1,14 +1,19 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
-import { getPlaylistItems } from '../services/spotify/playlistItems';
+import { getPlaylistItems, removePlaylistItems } from '../services/spotify/playlistItems';
 import { getPlaylist } from '../services/spotify/playlistDetails';
 import { invalidateSpotifyCacheForPlaylist } from '../services/spotify/spotifyRateLimiter';
 import { editPlaylist } from '../services/playlistEditService';
 import { toPlaylistUri } from '../services/spotifyPlayerService';
 import { useSpotifyPlayer } from '../hooks/useSpotifyPlayer';
 import { formatDuration } from '../utils/formatDuration';
-import { TrackItemCard, Spinner, PlaylistTrackIndexCell } from '../components';
+import {
+  TrackItemCard,
+  Spinner,
+  PlaylistTrackIndexCell,
+  PlaylistTrackDurationCell,
+} from '../components';
 
 const TRACKS_PER_PAGE = 10;
 
@@ -98,6 +103,8 @@ export default function PlaylistDetailsPage() {
   const [editPrompt, setEditPrompt] = useState('');
   const [isUpdatingPlaylist, setIsUpdatingPlaylist] = useState(false);
   const [editFeedback, setEditFeedback] = useState(null);
+  const [removingTrackId, setRemovingTrackId] = useState(null);
+  const [removeFeedback, setRemoveFeedback] = useState(null);
   const isPlaybackBusy = Boolean(busyAction);
   const loaderRef = useRef(null);
   /** Evita segunda página disparada 2x pelo IntersectionObserver antes de isLoadingTracks atualizar */
@@ -300,6 +307,56 @@ export default function PlaylistDetailsPage() {
     [playlistUri, playFromPositionWithEnsure],
   );
 
+  const handleRemoveTrack = useCallback(
+    async (trackId) => {
+      if (!accessToken || !playlistId || !trackId || removingTrackId) return;
+
+      const entry = tracks.find((e) => (e?.item ?? e?.track)?.id === trackId);
+      if (!entry) return;
+
+      const track = entry?.item ?? entry?.track;
+      const trackUri =
+        track?.uri ??
+        (track?.id ? `spotify:track:${track.id}` : `spotify:track:${trackId}`);
+      if (!trackUri) return;
+
+      const previousTracks = tracks;
+      const previousTotal = header.total;
+      const previousOffset = tracksOffsetRef.current;
+
+      setRemovingTrackId(trackId);
+      setRemoveFeedback(null);
+
+      setTracks((prev) => prev.filter((e) => (e?.item ?? e?.track)?.id !== trackId));
+      tracksOffsetRef.current = Math.max(0, tracksOffsetRef.current - 1);
+      setHeader((prev) => ({
+        ...prev,
+        total: Math.max(0, (prev.total ?? 1) - 1),
+      }));
+
+      try {
+        await removePlaylistItems(accessToken, playlistId, [trackUri]);
+        invalidateSpotifyCacheForPlaylist(playlistId);
+      } catch (err) {
+        setTracks(previousTracks);
+        tracksOffsetRef.current = previousOffset;
+        setHeader((prev) => ({ ...prev, total: previousTotal }));
+        const isPermissionError =
+          err?.message?.includes('403') ||
+          err?.message?.toLowerCase().includes('forbidden');
+        setRemoveFeedback({
+          type: 'error',
+          message: isPermissionError
+            ? 'Não foi possível remover a faixa. O token pode não ter permissão — verifique os escopos playlist-modify-public e playlist-modify-private.'
+            : 'Não foi possível remover a faixa. Tente novamente.',
+        });
+      } finally {
+        setRemovingTrackId(null);
+      }
+    },
+    [accessToken, playlistId, tracks, header.total, removingTrackId],
+  );
+
   if (!playlistId) return null;
 
   const totalLabel =
@@ -454,7 +511,20 @@ export default function PlaylistDetailsPage() {
         )}
 
         {!error && normalizedTracks.length > 0 && (
-          <ul className="space-y-1" aria-label="Faixas da playlist">
+          <>
+            {removeFeedback?.message && (
+              <p
+                role="alert"
+                className={`mb-4 rounded-lg border px-4 py-3 text-sm ${
+                  removeFeedback.type === 'error'
+                    ? 'border-red-200 bg-red-50 text-red-600 dark:border-red-900 dark:bg-red-950/40 dark:text-red-400'
+                    : 'border-[var(--color-border)] text-[var(--color-text-secondary)] dark:border-[var(--color-border-dark)]'
+                }`}
+              >
+                {removeFeedback.message}
+              </p>
+            )}
+            <ul className="space-y-1" aria-label="Faixas da playlist">
             {normalizedTracks.map((item) => (
               <li key={`${item.id}-${item.globalIndex}`}>
                 <TrackItemCard
@@ -465,6 +535,14 @@ export default function PlaylistDetailsPage() {
                       disabled={isPlaybackBusy || !accessToken}
                     />
                   }
+                  trailing={
+                    <PlaylistTrackDurationCell
+                      duration={item.duration}
+                      trackLabel={item.title}
+                      onRemove={() => handleRemoveTrack(item.id)}
+                      disabled={!accessToken || removingTrackId === item.id}
+                    />
+                  }
                   image={item.image}
                   title={item.title}
                   subtitle={item.subtitle}
@@ -473,7 +551,8 @@ export default function PlaylistDetailsPage() {
                 />
               </li>
             ))}
-          </ul>
+            </ul>
+          </>
         )}
 
         {/* Load more: Intersection Observer dispara loadMoreTracks */}

@@ -55,3 +55,60 @@ export async function getPlaylistItems(token, playlistId, limit = 50, offset = 0
     next: data.next ?? null,
   };
 }
+
+/**
+ * Remove faixas de uma playlist.
+ * Endpoint: DELETE /v1/playlists/{playlist_id}/items
+ *
+ * @param {string} token - Access token (Bearer)
+ * @param {string} playlistId - ID da playlist no Spotify
+ * @param {string[]} trackUris - URIs Spotify (ex.: spotify:track:...)
+ * @returns {Promise<{ snapshot_id: string }>}
+ */
+/**
+ * Remove faixas de uma playlist.
+ * Endpoint: DELETE /v1/playlists/{playlist_id}/items
+ *
+ * @param {string} token - Access token (Bearer)
+ * @param {string} playlistId - ID da playlist no Spotify
+ * @param {string[]} trackUris - URIs Spotify (ex.: spotify:track:...)
+ * @returns {Promise<{ snapshot_id: string }>}
+ */
+export async function removePlaylistItems(
+  token,
+  playlistId,
+  trackUris,
+  { bypassCache = false } = {},
+) {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Token de autenticação é obrigatório');
+  }
+  if (!playlistId || typeof playlistId !== 'string') {
+    throw new Error('ID da playlist é obrigatório');
+  }
+  if (!Array.isArray(trackUris) || trackUris.length === 0) {
+    throw new Error('Pelo menos uma URI de faixa é obrigatória');
+  }
+
+  const url = `${SPOTIFY_API_BASE}/playlists/${encodeURIComponent(playlistId)}/items`;
+
+  const response = await rateLimitedFetch(url, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    // CORREÇÃO AQUI: Mudado de 'tracks' para 'items' conforme a documentação do Spotify
+    body: JSON.stringify({
+      items: trackUris.map((uri) => ({ uri })),
+    }),
+    bypassCache,
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Remover faixas: ${response.status} ${text || response.statusText}`);
+  }
+
+  return response.json();
+}

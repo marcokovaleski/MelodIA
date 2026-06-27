@@ -10,10 +10,12 @@ import { Link } from 'react-router-dom';
  * @param {string} props.duration - Duração formatada (mm:ss)
  * @param {boolean} [props.explicit] - Se é conteúdo explícito
  * @param {import('react').ReactNode} [props.leading] - Conteúdo antes da capa (ex.: índice + play)
+ * @param {import('react').ReactNode} [props.trailing] - Conteúdo após o título (ex.: duração + remover)
  * @param {string} [props.to] - Link opcional (para ações futuras)
  */
 export default function TrackItemCard({
   leading,
+  trailing,
   image,
   title,
   subtitle,
@@ -55,9 +57,11 @@ export default function TrackItemCard({
           {subtitle}
         </p>
       </div>
-      <span className="shrink-0 text-sm text-[var(--color-text-muted)]">
-        {duration}
-      </span>
+      {trailing ?? (
+        <span className="shrink-0 text-sm text-[var(--color-text-muted)]">
+          {duration}
+        </span>
+      )}
     </>
   );
 
