@@ -380,15 +380,29 @@ export default function PlaylistDetailsPage() {
                 value={editPrompt}
                 onChange={(e) => setEditPrompt(e.target.value)}
                 placeholder="Refinar playlist com base em um prompt..."
-                className="h-12 w-full rounded-lg border border-[var(--color-border)] bg-transparent px-4 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] dark:border-[var(--color-border-dark)]"
+                disabled={isUpdatingPlaylist}
+                className="h-12 w-full rounded-lg border border-[var(--color-border)] bg-transparent px-4 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-subtle)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] disabled:cursor-not-allowed disabled:opacity-50 dark:border-[var(--color-border-dark)]"
               />
               <button
                 type="button"
                 onClick={handleEditPlaylist}
                 disabled={!editPrompt.trim() || isUpdatingPlaylist}
-                className="inline-flex h-12 shrink-0 items-center justify-center rounded-full bg-[var(--color-primary)] px-6 font-bold text-white transition-colors hover:bg-[var(--color-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-6 font-bold text-white transition-colors hover:bg-[var(--color-primary-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-primary)] focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                aria-busy={isUpdatingPlaylist}
               >
-                {isUpdatingPlaylist ? 'Atualizando...' : 'Atualizar Playlist'}
+                {isUpdatingPlaylist ? (
+                  <>
+                    <span
+                      className="material-symbols-outlined animate-spin text-xl"
+                      aria-hidden
+                    >
+                      progress_activity
+                    </span>
+                    Adicionando músicas...
+                  </>
+                ) : (
+                  'Atualizar Playlist'
+                )}
               </button>
             </div>
             {editFeedback?.message && (

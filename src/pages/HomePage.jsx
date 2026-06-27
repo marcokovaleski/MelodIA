@@ -71,6 +71,7 @@ export default function HomePage() {
   }, [location.pathname, location.state?.scrollToHero, location.state?.focusHero, navigate]);
 
   const handleHeroSubmit = async (trimmedPrompt) => {
+    if (isLoading) return;
     clearFeedback();
     const res = await execute(trimmedPrompt);
     if (res?.success && res?.playlistId) {

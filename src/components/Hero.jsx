@@ -20,6 +20,7 @@ const Hero = forwardRef(function Hero(
 ) {
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (isLoading) return;
     const v = value.trim();
     if (v && onSubmit) onSubmit(v);
   };
@@ -47,12 +48,12 @@ const Hero = forwardRef(function Hero(
       <p className="mb-10 text-lg text-[var(--color-text-secondary)]">{subtitle}</p>
 
       <form onSubmit={handleSubmit} className="relative mx-auto max-w-xl">
-        <div className="relative flex items-stretch">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <input
             ref={ref}
             name="prompt"
             type="text"
-            className="form-input h-14 w-full rounded-full border border-gray-300 bg-white px-6 pr-16 text-base text-[var(--color-text-primary)] placeholder:text-gray-400 shadow-sm transition-shadow focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/50 sm:h-16 sm:text-lg focus:outline-none"
+            className="form-input h-14 w-full rounded-full border border-gray-300 bg-white px-6 text-base text-[var(--color-text-primary)] placeholder:text-gray-400 shadow-sm transition-shadow focus:border-[var(--color-primary)] focus:ring-2 focus:ring-[var(--color-primary)]/50 sm:h-16 sm:text-lg focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             placeholder={placeholder}
             aria-label="Descreva a playlist que deseja criar"
             disabled={isLoading}
@@ -61,20 +62,28 @@ const Hero = forwardRef(function Hero(
           />
           <button
             type="submit"
-            className="absolute inset-y-0 right-0 flex items-center justify-center rounded-r-full bg-[var(--color-primary)] px-5 text-white transition-colors hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:ring-offset-2 disabled:opacity-50"
+            disabled={!value.trim() || isLoading}
+            className="inline-flex h-14 shrink-0 items-center justify-center gap-2 rounded-full bg-[var(--color-primary)] px-6 font-bold text-white transition-colors hover:bg-[var(--color-primary-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 sm:h-16"
             aria-label="Gerar playlist"
-            disabled={isLoading}
+            aria-busy={isLoading}
           >
-            <span className="material-symbols-outlined">arrow_forward</span>
+            {isLoading ? (
+              <>
+                <span
+                  className="material-symbols-outlined animate-spin text-xl"
+                  aria-hidden
+                >
+                  progress_activity
+                </span>
+                Gerando playlist...
+              </>
+            ) : (
+              'Gerar Playlist'
+            )}
           </button>
         </div>
       </form>
       <p className="mt-4 text-sm text-[var(--color-text-secondary)]">{hint}</p>
-      {isLoading ? (
-        <p className="mt-3 text-sm font-medium text-[var(--color-text-primary)]" aria-live="polite">
-          Gerando playlist...
-        </p>
-      ) : null}
       {errorMessage ? (
         <p className="mt-3 text-sm text-red-600" role="alert">
           {errorMessage}
