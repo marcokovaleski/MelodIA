@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, memo } from 'react';
+import { useEffect, useMemo, useState, memo, useRef } from 'react';
 import { usePlayerContext } from '../context/PlayerContext';
 import PlayerControls from './PlayerControls';
 import PlayerProgressBar from './PlayerProgressBar';
@@ -36,9 +36,8 @@ function TrackArtwork({
           decoding="async"
           onLoad={() => setLoaded(true)}
           onError={() => setLoaded(true)}
-          className={`h-full w-full object-cover transition-opacity duration-300 ${
-            loaded ? 'opacity-100' : 'opacity-0'
-          }`}
+          className={`h-full w-full object-cover transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'
+            }`}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-[var(--color-text-muted)]">
@@ -52,9 +51,6 @@ function TrackArtwork({
 
 const TrackArtworkMemo = memo(TrackArtwork);
 
-/**
- * Barra fixa inferior: capa, progresso sincronizado, shuffle/repeat e toasts.
- */
 export default function PlayerDock() {
   const {
     isPlayerDockVisible,
@@ -73,9 +69,47 @@ export default function PlayerDock() {
     cycleRepeat,
     shuffleState,
     repeatState,
+    volumeState,
+    changeVolume,
     error,
     dismissError,
   } = usePlayerContext();
+
+  const [localVolume, setLocalVolume] = useState(volumeState);
+
+  // Cria uma referência para rastrear quando o usuário mexeu no volume por último
+  const lastUserInteractionRef = useRef<number>(0);
+
+  // Sincroniza o volume vindo do Spotify, mas APENAS se o usuário não mexeu nele recentemente (trava de 2 segundos)
+  useEffect(() => {
+    const timeSinceInteraction = Date.now() - lastUserInteractionRef.current;
+    if (timeSinceInteraction > 2000) {
+      setLocalVolume(volumeState);
+    }
+  }, [volumeState]);
+
+  // Debounce para enviar à API
+  useEffect(() => {
+    if (localVolume === volumeState) return;
+
+    const timeoutId = setTimeout(() => {
+      void changeVolume(localVolume);
+    }, 250); // Reduzido para 250ms para ser mais responsivo
+
+    return () => clearTimeout(timeoutId);
+  }, [localVolume, volumeState, changeVolume]);
+
+  const handleVolumeChange = (value: number) => {
+    lastUserInteractionRef.current = Date.now(); // Marca o milissegundo do movimento
+    setLocalVolume(value);
+  };
+
+  const handleMuteToggle = () => {
+    lastUserInteractionRef.current = Date.now();
+    const nextVolume = localVolume === 0 ? 50 : 0;
+    setLocalVolume(nextVolume);
+    void changeVolume(nextVolume);
+  };
 
   useEffect(() => {
     if (!toast) return;
@@ -89,9 +123,9 @@ export default function PlayerDock() {
     return images[0]?.url ?? null;
   }, [currentTrack?.album?.images]);
 
-  const showTrack = currentTrack?.name ?? '';
+  const showTrack = currentTrack?.name ?? 'Nenhuma música tocando';
   const showArtist =
-    currentTrack?.artists?.map((a) => a.name).filter(Boolean).join(', ') ?? '';
+    currentTrack?.artists?.map((a) => a.name).filter(Boolean).join(', ') ?? 'Sem artista';
 
   return (
     <>
@@ -119,8 +153,10 @@ export default function PlayerDock() {
 
       {isPlayerDockVisible && (
         <div className="fixed bottom-0 left-0 right-0 z-[10002] border-t border-[var(--color-border)] bg-[var(--color-surface)]/95 px-4 py-3 shadow-[0_-4px_24px_rgba(0,0,0,0.08)] backdrop-blur-md dark:border-[var(--color-border-dark)] dark:bg-[var(--color-surface-dark)]/95 md:left-[var(--sidebar-width,0px)]">
-          <div className="mx-auto flex max-w-4xl flex-col gap-3 md:flex-row md:items-center md:gap-6">
-            <div className="flex min-w-0 flex-1 items-center gap-3 md:max-w-[42%]">
+          <div className="mx-auto flex flex-col gap-3 md:grid md:grid-cols-3 md:items-center md:gap-4 w-full">
+
+            {/* COLUNA ESQUERDA */}
+            <div className="flex min-w-0 items-center gap-3 justify-start">
               <TrackArtworkMemo imageUrl={artUrl} title={showTrack} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-[var(--color-text-primary)]">
@@ -130,7 +166,8 @@ export default function PlayerDock() {
               </div>
             </div>
 
-            <div className="flex min-w-0 flex-[2] flex-col gap-2">
+            {/* COLUNA CENTRAL */}
+            <div className="flex min-w-0 flex-col items-center gap-1.5 w-full max-w-xl mx-auto">
               <PlayerControls
                 isPlaying={isPlaying}
                 shuffleOn={shuffleState}
@@ -151,6 +188,29 @@ export default function PlayerDock() {
                 busy={busyAction === 'seek'}
               />
             </div>
+
+            {/* COLUNA DIREITA */}
+            <div className="hidden md:flex items-center justify-end gap-2 text-[var(--color-text-subtle)]">
+              <button
+                type="button"
+                className="hover:text-[var(--color-text-primary)] transition"
+                onClick={handleMuteToggle}
+              >
+                <span className="material-symbols-outlined text-xl select-none">
+                  {localVolume === 0 ? 'volume_off' : localVolume < 40 ? 'volume_down' : 'volume_up'}
+                </span>
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={localVolume}
+                onChange={(e) => handleVolumeChange(Number(e.target.value))} // <--- Atualizado aqui
+                className="w-24 h-1 accent-[var(--color-primary)] bg-[var(--color-border)] dark:bg-[var(--color-border-dark)] rounded-lg appearance-none cursor-pointer"
+                aria-label="Controle de volume"
+              />
+            </div>
+
           </div>
         </div>
       )}

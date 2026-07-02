@@ -53,6 +53,7 @@ export interface PlayerContextValue {
   webPlayerReady: boolean;
   shuffleState: boolean;
   repeatState: string;
+  volumeState: number;
   /** GET /me/player após primeiro poll */
   rawPlayback: SpotifyPlayerPlaybackState | null;
   /** Exibir PlayerDock (faixa + device ativos, sem flicker ao esvaziar) */
@@ -68,6 +69,7 @@ export interface PlayerContextValue {
   seekTo: (positionMs: number) => Promise<void>;
   toggleShuffle: () => Promise<void>;
   cycleRepeat: () => Promise<void>;
+  changeVolume: (volumePercent: number) => Promise<void>;
   playPlaylistUri: (playlistUri: string) => Promise<void>;
   playFromPlaylistPosition: (playlistUri: string, positionZeroBased: number) => Promise<void>;
 }
@@ -103,6 +105,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [durationMs, setDurationMs] = useState(0);
   const [shuffleState, setShuffleState] = useState(false);
   const [repeatState, setRepeatStateState] = useState<string>('off');
+  const [volumeState, setVolumeState] = useState<number>(50);
 
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [webPlayerReady, setWebPlayerReady] = useState(false);
@@ -192,6 +195,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const dur = state.item?.duration_ms ?? 0;
     setShuffleState(Boolean(state.shuffle_state));
     setRepeatStateState(String(state.repeat_state || 'off'));
+
+    if (state.device && typeof state.device.volume_percent === 'number') {
+      setVolumeState(state.device.volume_percent);
+    }
 
     applyProgressAnchor(state.progress_ms ?? 0, Boolean(state.is_playing), dur);
   }, [applyProgressAnchor]);
@@ -401,6 +408,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await runControl('repeat', (t) => setRepeat(t, mode));
   }, [runControl, repeatState]);
 
+  const changeVolume = useCallback(async (volumePercent: number) => {
+    // 1. Atualização otimista imediata no estado global
+    setVolumeState(volumePercent);
+
+    if (!accessToken) return;
+
+    try {
+      // Fazemos o PUT diretamente usando o withToken, sem passar pelo peso do runControl
+      await withToken(async (token) => {
+        let url = `https://api.spotify.com/v1/me/player/volume?volume_percent=${volumePercent}`;
+
+        if (deviceIdRef.current) {
+          url += `&device_id=${deviceIdRef.current}`;
+        }
+
+        const response = await fetch(url, {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new SpotifyApiError(
+            errData?.error?.message || 'Falha ao alterar volume',
+            response.status
+          );
+        }
+      });
+    } catch (e) {
+      const msg = getPlaybackErrorMessage(e);
+      logSpotifyPlayerError('volume', e, { userMessage: msg });
+      showUserError(msg);
+    }
+  }, [accessToken, withToken, showUserError]);
+
   const playPlaylistUri = useCallback(
     async (playlistUri: string) => {
       await runControl(
@@ -455,6 +500,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       webPlayerReady,
       shuffleState,
       repeatState,
+      volumeState,
       rawPlayback,
       isPlayerDockVisible,
       error,
@@ -468,6 +514,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       seekTo,
       toggleShuffle,
       cycleRepeat,
+      changeVolume,
       playPlaylistUri,
       playFromPlaylistPosition,
     }),
@@ -480,6 +527,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       webPlayerReady,
       shuffleState,
       repeatState,
+      volumeState,
       rawPlayback,
       isPlayerDockVisible,
       error,
@@ -493,6 +541,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       seekTo,
       toggleShuffle,
       cycleRepeat,
+      changeVolume,
       playPlaylistUri,
       playFromPlaylistPosition,
     ],
