@@ -76,31 +76,27 @@ export default function PlayerDock() {
   } = usePlayerContext();
 
   const [localVolume, setLocalVolume] = useState(volumeState);
+  const lastUserInteractionRef = useRef(0);
+  const VOLUME_SYNC_LOCK_MS = 4000;
 
-  // Cria uma referência para rastrear quando o usuário mexeu no volume por último
-  const lastUserInteractionRef = useRef<number>(0);
-
-  // Sincroniza o volume vindo do Spotify, mas APENAS se o usuário não mexeu nele recentemente (trava de 2 segundos)
   useEffect(() => {
-    const timeSinceInteraction = Date.now() - lastUserInteractionRef.current;
-    if (timeSinceInteraction > 2000) {
+    if (Date.now() - lastUserInteractionRef.current > VOLUME_SYNC_LOCK_MS) {
       setLocalVolume(volumeState);
     }
   }, [volumeState]);
 
-  // Debounce para enviar à API
   useEffect(() => {
     if (localVolume === volumeState) return;
 
-    const timeoutId = setTimeout(() => {
+    const timeoutId = window.setTimeout(() => {
       void changeVolume(localVolume);
-    }, 250); // Reduzido para 250ms para ser mais responsivo
+    }, 250);
 
-    return () => clearTimeout(timeoutId);
+    return () => window.clearTimeout(timeoutId);
   }, [localVolume, volumeState, changeVolume]);
 
   const handleVolumeChange = (value: number) => {
-    lastUserInteractionRef.current = Date.now(); // Marca o milissegundo do movimento
+    lastUserInteractionRef.current = Date.now();
     setLocalVolume(value);
   };
 
@@ -205,7 +201,7 @@ export default function PlayerDock() {
                 min="0"
                 max="100"
                 value={localVolume}
-                onChange={(e) => handleVolumeChange(Number(e.target.value))} // <--- Atualizado aqui
+                onChange={(e) => handleVolumeChange(Number(e.target.value))}
                 className="w-24 h-1 accent-[var(--color-primary)] bg-[var(--color-border)] dark:bg-[var(--color-border-dark)] rounded-lg appearance-none cursor-pointer"
                 aria-label="Controle de volume"
               />

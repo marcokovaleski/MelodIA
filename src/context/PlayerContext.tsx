@@ -24,6 +24,7 @@ import {
   seek as apiSeek,
   setRepeat,
   setShuffle,
+  setVolume,
   SpotifyApiError,
 } from '../services/spotifyPlayerService';
 import { logPlaybackSyncDebug, logSpotifyPlayerError } from '../services/spotifyPlayerLogger';
@@ -125,6 +126,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const baseTimestampRef = useRef(0);
   const durationRef = useRef(0);
   const lastDebugLogRef = useRef(0);
+  const lastVolumeChangeTimeRef = useRef(0);
 
   /** Âncora no relógio local: progress_ms da API/SDK no instante do snapshot. */
   const applyProgressAnchor = useCallback(
@@ -196,7 +198,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setShuffleState(Boolean(state.shuffle_state));
     setRepeatStateState(String(state.repeat_state || 'off'));
 
-    if (state.device && typeof state.device.volume_percent === 'number') {
+    const msSinceLocalVolumeChange = Date.now() - lastVolumeChangeTimeRef.current;
+    if (
+      state.device &&
+      typeof state.device.volume_percent === 'number' &&
+      msSinceLocalVolumeChange > 4000
+    ) {
       setVolumeState(state.device.volume_percent);
     }
 
@@ -408,43 +415,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     await runControl('repeat', (t) => setRepeat(t, mode));
   }, [runControl, repeatState]);
 
-  const changeVolume = useCallback(async (volumePercent: number) => {
-    // 1. Atualização otimista imediata no estado global
-    setVolumeState(volumePercent);
+  const changeVolume = useCallback(
+    async (volumePercent: number) => {
+      const clamped = Math.round(Math.min(100, Math.max(0, volumePercent)));
+      setVolumeState(clamped);
+      lastVolumeChangeTimeRef.current = Date.now();
 
-    if (!accessToken) return;
+      if (!accessToken) return;
 
-    try {
-      // Fazemos o PUT diretamente usando o withToken, sem passar pelo peso do runControl
-      await withToken(async (token) => {
-        let url = `https://api.spotify.com/v1/me/player/volume?volume_percent=${volumePercent}`;
+      const activeDeviceId = rawPlayback?.device?.id || deviceIdRef.current;
 
-        if (deviceIdRef.current) {
-          url += `&device_id=${deviceIdRef.current}`;
-        }
-
-        const response = await fetch(url, {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new SpotifyApiError(
-            errData?.error?.message || 'Falha ao alterar volume',
-            response.status
-          );
-        }
-      });
-    } catch (e) {
-      const msg = getPlaybackErrorMessage(e);
-      logSpotifyPlayerError('volume', e, { userMessage: msg });
-      showUserError(msg);
-    }
-  }, [accessToken, withToken, showUserError]);
+      try {
+        await withToken((token) => setVolume(token, clamped, activeDeviceId));
+      } catch (e) {
+        const msg = getPlaybackErrorMessage(e);
+        logSpotifyPlayerError('volume', e, { userMessage: msg });
+        showUserError(msg);
+      }
+    },
+    [accessToken, rawPlayback, withToken, showUserError],
+  );
 
   const playPlaylistUri = useCallback(
     async (playlistUri: string) => {

@@ -79,6 +79,208 @@ function TrackRowSkeleton() {
   );
 }
 
+const SWIPE_DELETE_WIDTH = 80;
+const SWIPE_DELETE_THRESHOLD = 56;
+const SWIPE_REVEAL_SNAP = 24;
+const SWIPE_DIRECTION_LOCK_PX = 8;
+const SWIPE_PLAY_CANCEL_PX = 10;
+
+function isMobileViewport() {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+}
+
+/**
+ * Linha de faixa com play por toque e swipe-to-delete no mobile;
+ * desktop mantém hover nas células de índice e duração.
+ */
+function PlaylistTrackRow({
+  item,
+  onPlay,
+  onRemove,
+  playDisabled,
+  removeDisabled,
+}) {
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const touchStartXRef = useRef(0);
+  const touchStartYRef = useRef(0);
+  const swipeOffsetRef = useRef(0);
+  const isHorizontalSwipeRef = useRef(null);
+  const didSwipeRef = useRef(false);
+  const isTouchActiveRef = useRef(false);
+
+  const updateSwipeOffset = useCallback((value) => {
+    swipeOffsetRef.current = value;
+    setSwipeOffset(value);
+  }, []);
+
+  const handleTouchStart = useCallback((e) => {
+    if (!isMobileViewport()) return;
+
+    const touch = e.touches[0];
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+    isHorizontalSwipeRef.current = null;
+    didSwipeRef.current = false;
+    isTouchActiveRef.current = true;
+    setIsDragging(true);
+  }, []);
+
+  const handleTouchMove = useCallback((e) => {
+    if (!isMobileViewport() || !isTouchActiveRef.current) return;
+
+    const touch = e.touches[0];
+    const deltaX = touchStartXRef.current - touch.clientX;
+    const deltaY = touch.clientY - touchStartYRef.current;
+
+    if (isHorizontalSwipeRef.current === null) {
+      const absX = Math.abs(touch.clientX - touchStartXRef.current);
+      const absY = Math.abs(deltaY);
+      if (absX > SWIPE_DIRECTION_LOCK_PX || absY > SWIPE_DIRECTION_LOCK_PX) {
+        isHorizontalSwipeRef.current = absX > absY;
+      }
+    }
+
+    if (!isHorizontalSwipeRef.current) return;
+
+    if (deltaX > SWIPE_PLAY_CANCEL_PX) {
+      didSwipeRef.current = true;
+    }
+
+    if (deltaX > 0) {
+      updateSwipeOffset(Math.min(deltaX, SWIPE_DELETE_WIDTH));
+    } else {
+      updateSwipeOffset(0);
+    }
+  }, [updateSwipeOffset]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!isMobileViewport()) return;
+
+    isTouchActiveRef.current = false;
+    setIsDragging(false);
+    isHorizontalSwipeRef.current = null;
+
+    const finalOffset = swipeOffsetRef.current;
+    if (finalOffset >= SWIPE_DELETE_THRESHOLD) {
+      didSwipeRef.current = true;
+      updateSwipeOffset(0);
+      onRemove?.();
+      return;
+    }
+
+    if (finalOffset >= SWIPE_REVEAL_SNAP) {
+      didSwipeRef.current = true;
+      updateSwipeOffset(SWIPE_DELETE_WIDTH);
+      return;
+    }
+
+    updateSwipeOffset(0);
+  }, [onRemove, updateSwipeOffset]);
+
+  const handleRowClick = useCallback(() => {
+    if (!isMobileViewport()) return;
+
+    if (didSwipeRef.current) {
+      didSwipeRef.current = false;
+      return;
+    }
+
+    if (swipeOffsetRef.current > 0) {
+      updateSwipeOffset(0);
+      return;
+    }
+
+    if (!playDisabled) {
+      onPlay?.();
+    }
+  }, [onPlay, playDisabled, updateSwipeOffset]);
+
+  const handleDeleteClick = useCallback(
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      updateSwipeOffset(0);
+      onRemove?.();
+    },
+    [onRemove, updateSwipeOffset],
+  );
+
+  return (
+    <div className="relative overflow-hidden rounded-lg">
+      <div
+        className="absolute inset-y-0 right-0 flex w-20 items-center justify-center bg-red-600 md:hidden"
+        aria-hidden={swipeOffset === 0}
+      >
+        <button
+          type="button"
+          disabled={removeDisabled}
+          onClick={handleDeleteClick}
+          className="flex h-full w-full items-center justify-center text-white disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label={`Remover ${item.title}`}
+        >
+          <span className="material-symbols-outlined text-2xl">delete</span>
+        </button>
+      </div>
+
+      <div
+        onClick={handleRowClick}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className={`relative touch-pan-y bg-[var(--color-surface)] dark:bg-[var(--color-surface-dark)] md:touch-auto md:bg-transparent md:dark:bg-transparent ${
+          isDragging ? '' : 'transition-transform duration-200 ease-out'
+        } md:translate-x-0`}
+        style={
+          swipeOffset > 0 || isDragging
+            ? { transform: `translateX(-${swipeOffset}px)` }
+            : undefined
+        }
+      >
+        <TrackItemCard
+          leading={
+            <>
+              <span
+                className="flex h-12 w-10 shrink-0 items-center justify-end pr-1 text-sm font-medium tabular-nums text-[var(--color-text-muted)] md:hidden"
+                aria-hidden
+              >
+                {item.globalIndex + 1}
+              </span>
+              <div className="hidden md:block">
+                <PlaylistTrackIndexCell
+                  indexOneBased={item.globalIndex + 1}
+                  onPlay={onPlay}
+                  disabled={playDisabled}
+                />
+              </div>
+            </>
+          }
+          trailing={
+            <>
+              <span className="shrink-0 text-sm text-[var(--color-text-muted)] md:hidden">
+                {item.duration}
+              </span>
+              <div className="hidden md:block">
+                <PlaylistTrackDurationCell
+                  duration={item.duration}
+                  trackLabel={item.title}
+                  onRemove={onRemove}
+                  disabled={removeDisabled}
+                />
+              </div>
+            </>
+          }
+          image={item.image}
+          title={item.title}
+          subtitle={item.subtitle}
+          duration={item.duration}
+          explicit={item.explicit}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function PlaylistDetailsPage() {
   const { id: playlistId } = useParams();
   const location = useLocation();
@@ -527,27 +729,12 @@ export default function PlaylistDetailsPage() {
             <ul className="space-y-1" aria-label="Faixas da playlist">
             {normalizedTracks.map((item) => (
               <li key={`${item.id}-${item.globalIndex}`}>
-                <TrackItemCard
-                  leading={
-                    <PlaylistTrackIndexCell
-                      indexOneBased={item.globalIndex + 1}
-                      onPlay={() => handlePlayFromPosition(item.globalIndex)}
-                      disabled={isPlaybackBusy || !accessToken}
-                    />
-                  }
-                  trailing={
-                    <PlaylistTrackDurationCell
-                      duration={item.duration}
-                      trackLabel={item.title}
-                      onRemove={() => handleRemoveTrack(item.id)}
-                      disabled={!accessToken || removingTrackId === item.id}
-                    />
-                  }
-                  image={item.image}
-                  title={item.title}
-                  subtitle={item.subtitle}
-                  duration={item.duration}
-                  explicit={item.explicit}
+                <PlaylistTrackRow
+                  item={item}
+                  onPlay={() => handlePlayFromPosition(item.globalIndex)}
+                  onRemove={() => handleRemoveTrack(item.id)}
+                  playDisabled={isPlaybackBusy || !accessToken}
+                  removeDisabled={!accessToken || removingTrackId === item.id}
                 />
               </li>
             ))}

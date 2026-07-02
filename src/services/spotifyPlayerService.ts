@@ -177,6 +177,21 @@ export async function setRepeat(accessToken: string, state: RepeatMode): Promise
   await expectSuccess(res, 'setRepeat');
 }
 
+/** PUT /v1/me/player/volume?volume_percent= */
+export async function setVolume(
+  accessToken: string,
+  volumePercent: number,
+  deviceId?: string | null,
+): Promise<void> {
+  const clamped = Math.round(Math.min(100, Math.max(0, volumePercent)));
+  const q = new URLSearchParams({ volume_percent: String(clamped) });
+  if (deviceId) q.set('device_id', deviceId);
+  const res = await playerRequest(accessToken, 'PUT', `/me/player/volume?${q.toString()}`, {
+    skipCacheBust: true,
+  });
+  await expectSuccess(res, 'setVolume');
+}
+
 /**
  * Após transferPlayback: confirma via GET /me/player que o device está ativo.
  */
